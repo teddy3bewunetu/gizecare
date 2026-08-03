@@ -1,0 +1,106 @@
+name: gizecare
+description: >
+  ጊዜCare (GizeCare) — your workday, one place.
+  Offline-first workday hub for freelancers, engineers, and designers:
+  time tracking, projects, notes, documents, calendar, Gmail, and Telegram
+  without juggling separate apps.
+publish_to: 'none'
+version: 0.1.0+1
+
+environment:
+  sdk: ^3.10.1
+
+dependencies:
+  flutter:
+    sdk: flutter
+  flutter_localizations:
+    sdk: flutter
+
+  # State management
+  flutter_riverpod: ^2.6.1
+  riverpod_annotation: ^2.6.1
+
+  # Navigation
+  go_router: ^15.1.2
+
+  # Database (SQLite via Drift)
+  drift: ^2.26.1
+  sqlite3_flutter_libs: ^0.5.32
+  sqlite3: ^2.7.5
+  path: ^1.9.1
+  path_provider: ^2.1.5
+
+  # Serialization
+  freezed_annotation: ^3.0.0
+  json_annotation: ^4.9.0
+
+  # Charts
+  fl_chart: ^0.71.0
+
+  # Desktop shell
+  # tray_manager is omitted: Flutter snap cannot link ayatana/glib (ABI mismatch).
+  # TrayService is a soft stub; window_manager still powers compact/full modes.
+  window_manager: ^0.5.0
+  screen_retriever: ^0.2.0
+
+  # Utilities
+  intl: ^0.20.2
+  logger: ^2.5.0
+  uuid: ^4.5.1
+  package_info_plus: ^8.3.0
+  device_info_plus: ^11.4.0
+  collection: ^1.19.1
+  equatable: ^2.0.7
+  meta: ^1.16.0
+  google_fonts: ^8.2.0
+  file_selector: ^1.1.0
+  ffi: ^2.1.4
+  timezone: ^0.10.1
+  # Share / open files on mobile.
+  open_filex: ^4.7.0
+  flutter_markdown: ^0.7.7+1
+  http: ^1.4.0
+  flutter_quill: ^11.5.0
+  url_launcher: ^6.3.2
+  googleapis: ^16.0.0
+  googleapis_auth: ^2.3.3
+  flutter_secure_storage: ^10.3.1
+  flutter_dotenv: ^6.0.1
+  pdfrx: 2.2.24
+  epub_pro: ^5.6.0
+  flutter_html: ^3.0.0
+  record: ^6.2.1
+  flutter_widget_from_html: ^0.17.2
+  just_audio: ^0.10.6
+  flutter_svg: ^2.3.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+
+  # Code generation
+  build_runner: ^2.4.15
+  drift_dev: ^2.26.1
+  freezed: ^3.0.6
+  json_serializable: ^6.9.5
+  riverpod_generator: ^2.6.5
+  custom_lint: ^0.7.5
+  riverpod_lint: ^2.6.5
+  flutter_launcher_icons: ^0.14.3
+
+flutter:
+  uses-material-design: true
+
+  assets:
+    - assets/brand/
+    - assets/icons/
+    - assets/sounds/alarms/
+
+flutter_launcher_icons:
+  android: true
+  ios: true
+  image_path: assets/icons/app_icon_256.png
+  adaptive_icon_background: "#009DFE"
+  adaptive_icon_foreground: assets/icons/app_icon_256.png
+  remove_alpha_ios: true
