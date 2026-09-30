@@ -1,0 +1,354 @@
+import 'dart:async';
+import 'dart:io';
+import 'dart:ui' show Offset, PlatformDispatcher, Size;
+
+import 'package:desktop_webview_window/desktop_webview_window.dart';
+import 'package:flutter/foundation.dart';
+import 'package:path/path.dart' as p;
+import 'package:path_provider/path_provider.dart';
+import 'package:url_launcher/url_launcher.dart';
+import 'package:uuid/uuid.dart';
+
+import 'package:gizecare/core/browser/browser_injected_scripts.dart';
+import 'package:gizecare/core/constants/app_constants.dart';
+import 'package:gizecare/core/platform/app_platform.dart';
+
+/// Callbacks from the desktop WebKit/WebView2 engine into Flutter chrome.
+typedef BrowserUrlCallback = void Function(String tabId, String url);
+typedef BrowserHistoryCallback = void Function(
+  String tabId, {
+  required bool canGoBack,
+  required bool canGoForward,
+});
+typedef BrowserNavigatingCallback = void Function(
+  String tabId,
+  bool isNavigating,
+);
+
+/// Desktop browser engine — one companion WebKit/WebView2 window per session.
+///
+/// Apps (ChatGPT / Gemini / YouTube / WhatsApp) use stable [sessionKey]s so
+/// switching routes reuses the warm WebKit process, cookies, and history
+/// instead of creating a new window every time.
+abstract final class AppDesktopBrowser {
+  static final Map<String, Webview> _tabs = {};
+  static final Map<String, String> _sessionUrls = {};
+  static String? _activeTabId;
+  static var _opening = false;
+  static const _uuid = Uuid();
+
+  static BrowserUrlCallback? onUrlChanged;
+  static BrowserHistoryCallback? onHistoryChanged;
+  static BrowserNavigatingCallback? onNavigating;
+
+  /// Fired when native intercepts a YouTube watch URL (WebKit media is unsafe).
+  static BrowserUrlCallback? onInAppMedia;
+
+  static bool get isAvailable =>
+      AppPlatform.isDesktop &&
+      !kIsWeb &&
+      (defaultTargetPlatform == TargetPlatform.linux ||
+          defaultTargetPlatform == TargetPlatform.windows);
+
+  static bool get hasSession => _tabs.isNotEmpty;
+
+  static String? get activeTabId => _activeTabId;
+
+  static String? urlForSession(String sessionKey) => _sessionUrls[sessionKey];
+
+  static String newTabId() => _uuid.v4();
+
+  /// Stable session id for an app / site (e.g. `host:www.youtube.com`).
+  static String sessionKeyForUrl(String url) {
+    final uri = Uri.tryParse(url);
+    final host = uri?.host.toLowerCase() ?? '';
+    if (host.isEmpty) return 'tab:${newTabId()}';
+    return 'host:$host';
+  }
+
+  /// Opens or resumes a session. Warm sessions are only navigated when
+  /// [forceNavigate] is true (address-bar submit / explicit open).
+  static Future<bool> openSession(
+    String sessionKey,
+    String url, {
+    bool forceNavigate = false,
+  }) async {
+    if (!isAvailable) return false;
+    if (_opening) return false;
+    _opening = true;
+    try {
+      if (!await WebviewWindow.isWebviewAvailable()) {
+        return _launchExternal(url);
+      }
+
+      final existing = _tabs[sessionKey];
+      if (existing != null) {
+        _wire(sessionKey, existing);
+        if (forceNavigate) {
+          existing.launch(url);
+          _sessionUrls[sessionKey] = url;
+        }
+        await activateTab(sessionKey);
+        final known = _sessionUrls[sessionKey] ?? url;
+        onUrlChanged?.call(sessionKey, known);
+        return true;
+      }
+
+      final dataDir = await userDataDir();
+      final webview = await WebviewWindow.create(
+        configuration: CreateConfiguration(
+          title: '${AppConstants.appName} Browser',
+          titleBarHeight: 0,
+          windowWidth: 960,
+          windowHeight: 640,
+          userDataFolderWindows: dataDir,
+        ),
+      );
+      _tabs[sessionKey] = webview;
+      _sessionUrls[sessionKey] = url;
+      _wire(sessionKey, webview);
+
+      try {
+        await webview.setApplicationNameForUserAgent(' ${AppConstants.appName}');
+      } catch (_) {}
+
+      try {
+        webview.addScriptToExecuteOnDocumentCreated(
+          BrowserInjectedScripts.sameWindowNavigation,
+        );
+        webview.addScriptToExecuteOnDocumentCreated(
+          BrowserInjectedScripts.ctrlEnterNewline,
+        );
+      } catch (e) {
+        debugPrint('AppDesktopBrowser inject shortcuts: $e');
+      }
+
+      webview.launch(url);
+      unawaited(
+        webview.onClose.then((_) {
+          _tabs.remove(sessionKey);
+          _sessionUrls.remove(sessionKey);
+          if (_activeTabId == sessionKey) {
+            _activeTabId = _tabs.keys.isEmpty ? null : _tabs.keys.first;
+          }
+        }),
+      );
+      await activateTab(sessionKey);
+      return true;
+    } catch (e, st) {
+      debugPrint('AppDesktopBrowser.openSession failed: $e\n$st');
+      _tabs.remove(sessionKey);
+      _sessionUrls.remove(sessionKey);
+      return _launchExternal(url);
+    } finally {
+      _opening = false;
+    }
+  }
+
+  /// Creates (or reuses) a content window for [tabId] and loads [url].
+  static Future<bool> openTab(String tabId, String url) =>
+      openSession(tabId, url, forceNavigate: true);
+
+  /// Shows [tabId] and hides every other tab window.
+  static Future<void> activateTab(String tabId) async {
+    if (!_tabs.containsKey(tabId)) return;
+    _activeTabId = tabId;
+    for (final entry in _tabs.entries) {
+      try {
+        await entry.value.setWebviewWindowVisibility(entry.key == tabId);
+      } catch (e) {
+        debugPrint('AppDesktopBrowser.activateTab visibility: $e');
+      }
+    }
+  }
+
+  /// Hides one session without destroying its WebKit process / history.
+  static Future<void> hideSession(String sessionKey) async {
+    final w = _tabs[sessionKey];
+    if (w == null) return;
+    try {
+      await w.setWebviewWindowVisibility(false);
+    } catch (e) {
+      debugPrint('AppDesktopBrowser.hideSession: $e');
+    }
+    if (_activeTabId == sessionKey) {
+      _activeTabId = null;
+    }
+  }
+
+  static Future<void> closeTab(String tabId) async {
+    final w = _tabs.remove(tabId);
+    _sessionUrls.remove(tabId);
+    if (_activeTabId == tabId) {
+      _activeTabId = _tabs.keys.isEmpty ? null : _tabs.keys.first;
+    }
+    try {
+      w?.close();
+    } catch (_) {}
+    if (_activeTabId != null) {
+      await activateTab(_activeTabId!);
+    }
+  }
+
+  static void _wire(String tabId, Webview webview) {
+    WebviewWindow.onExternalUrlHandOff ??= (url) async {
+      onInAppMedia?.call(_activeTabId ?? tabId, url);
+    };
+    webview.setOnUrlRequestCallback((url) {
+      if (url == 'about:blank' || url.trim().isEmpty) return true;
+      if (_isYoutubeWatchUrl(url)) {
+        onInAppMedia?.call(tabId, url);
+        return false;
+      }
+      _sessionUrls[tabId] = url;
+      onUrlChanged?.call(tabId, url);
+      return true;
+    });
+    webview.setOnHistoryChangedCallback((canGoBack, canGoForward) {
+      onHistoryChanged?.call(
+        tabId,
+        canGoBack: canGoBack,
+        canGoForward: canGoForward,
+      );
+    });
+    webview.isNavigating.addListener(() {
+      onNavigating?.call(tabId, webview.isNavigating.value);
+    });
+  }
+
+  static bool _isYoutubeWatchUrl(String url) {
+    final u = url.toLowerCase();
+    return u.contains('youtube.com/watch') ||
+        u.contains('youtube.com/shorts/') ||
+        u.contains('youtube.com/embed/') ||
+        u.contains('youtube.com/live/') ||
+        u.contains('youtu.be/') ||
+        u.contains('youtube-nocookie.com/');
+  }
+
+  static Future<void> navigate(String url) async {
+    final id = _activeTabId;
+    if (id == null) {
+      await openSession(sessionKeyForUrl(url), url, forceNavigate: true);
+      return;
+    }
+    _sessionUrls[id] = url;
+    _tabs[id]?.launch(url);
+  }
+
+  static Future<void> goBack() async => _tabs[_activeTabId]?.back();
+
+  static Future<void> goForward() async => _tabs[_activeTabId]?.forward();
+
+  static Future<void> reload() async => _tabs[_activeTabId]?.reload();
+
+  static Future<void> stop() async => _tabs[_activeTabId]?.stop();
+
+  static Future<void> openDevTools() async {
+    final w = _tabs[_activeTabId];
+    if (w == null) return;
+    try {
+      await w.openDevToolsWindow();
+    } catch (e) {
+      debugPrint('AppDesktopBrowser.openDevTools: $e');
+    }
+  }
+
+  static Future<void> show() async {
+    final id = _activeTabId;
+    if (id == null) return;
+    try {
+      await _tabs[id]?.setWebviewWindowVisibility(true);
+    } catch (e) {
+      debugPrint('AppDesktopBrowser.show: $e');
+    }
+  }
+
+  static Future<void> hide() async {
+    for (final w in _tabs.values) {
+      try {
+        await w.setWebviewWindowVisibility(false);
+      } catch (e) {
+        debugPrint('AppDesktopBrowser.hide: $e');
+      }
+    }
+  }
+
+  /// Docks the active tab window into the Browser content placeholder.
+  static Future<void> dockTo(Offset viewRelativeTopLeft, Size size) async {
+    final w = _tabs[_activeTabId];
+    if (w == null || size.width < 32 || size.height < 32) return;
+
+    late final int left;
+    late final int top;
+    late final int width;
+    late final int height;
+
+    if (Platform.isWindows) {
+      final dpr = PlatformDispatcher.instance.views.isEmpty
+          ? 1.0
+          : PlatformDispatcher.instance.views.first.devicePixelRatio;
+      left = (viewRelativeTopLeft.dx * dpr).round();
+      top = (viewRelativeTopLeft.dy * dpr).round();
+      width = (size.width * dpr).round();
+      height = (size.height * dpr).round();
+    } else {
+      left = viewRelativeTopLeft.dx.round();
+      top = viewRelativeTopLeft.dy.round();
+      width = size.width.round();
+      height = size.height.round();
+    }
+
+    try {
+      await w.moveWebviewWindow(left, top, width, height);
+    } catch (e) {
+      debugPrint('AppDesktopBrowser.dockTo: $e');
+    }
+  }
+
+  static Future<void> closeAll() async {
+    final all = List<Webview>.from(_tabs.values);
+    _tabs.clear();
+    _sessionUrls.clear();
+    _activeTabId = null;
+    for (final w in all) {
+      try {
+        w.close();
+      } catch (_) {}
+    }
+  }
+
+  /// Back-compat: open/replace a single session tab.
+  static Future<bool> ensureOpen(String url) async {
+    return openSession(sessionKeyForUrl(url), url, forceNavigate: true);
+  }
+
+  static Future<void> close() => closeAll();
+
+  static Future<String> userDataDir() async {
+    final support = await getApplicationSupportDirectory();
+    return p.join(support.path, 'webview_profile');
+  }
+
+  static Future<void> clearProfileData() async {
+    await closeAll();
+    try {
+      final dir = Directory(await userDataDir());
+      if (dir.existsSync()) {
+        await dir.delete(recursive: true);
+      }
+    } catch (e) {
+      debugPrint('AppDesktopBrowser.clearProfileData: $e');
+    }
+  }
+
+  static Future<bool> _launchExternal(String url) async {
+    final uri = Uri.tryParse(url);
+    if (uri == null) return false;
+    try {
+      return launchUrl(uri, mode: LaunchMode.externalApplication);
+    } catch (_) {
+      return false;
+    }
+  }
+}

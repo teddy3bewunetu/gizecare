@@ -2,12 +2,13 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:file_selector/file_selector.dart';
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_quill/flutter_quill.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:url_launcher/url_launcher.dart';
 
+import 'package:gizecare/core/browser/app_link_opener.dart';
 import 'package:gizecare/core/di/repository_providers.dart';
 import 'package:gizecare/core/theme/app_colors.dart';
 import 'package:gizecare/core/widgets/app_snackbar.dart';
@@ -387,11 +388,20 @@ class _NoteEditorPaneState extends ConsumerState<NoteEditorPane> {
 
   Future<void> _openLink(String? raw) async {
     if (raw == null || raw.trim().isEmpty) return;
-    var value = raw.trim();
-    if (!value.contains('://')) value = 'https://$value';
-    final uri = Uri.tryParse(value);
-    if (uri == null) return;
-    await launchUrl(uri, mode: LaunchMode.externalApplication);
+    if (!mounted) return;
+    await AppLinkOpener.open(context, raw.trim());
+  }
+
+  /// Quill desktop defaults to Ctrl/Cmd+click only. Always attach a tap
+  /// recognizer so links show a pointer cursor and open on a normal click.
+  GestureRecognizer? _linkRecognizer(Attribute<dynamic> attribute, Node leaf) {
+    if (attribute.key != Attribute.link.key) return null;
+    final href = attribute.value;
+    if (href is! String || href.trim().isEmpty) return null;
+    return TapGestureRecognizer()
+      ..onTap = () {
+        _openLink(href);
+      };
   }
 
   @override
@@ -630,6 +640,11 @@ class _NoteEditorPaneState extends ConsumerState<NoteEditorPane> {
                               enableSelectionToolbar: true,
                               paintCursorAboveText: true,
                               onLaunchUrl: _openLink,
+                              // Bypass Quill’s Ctrl/Cmd+click-only desktop rule.
+                              customRecognizerBuilder: _linkRecognizer,
+                              linkActionPickerDelegate:
+                                  (context, link, node) async =>
+                                      LinkMenuAction.launch,
                             ),
                           ),
                         ),

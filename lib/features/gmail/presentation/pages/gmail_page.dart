@@ -5,6 +5,7 @@ import 'package:intl/intl.dart';
 import 'package:gizecare/core/platform/app_platform.dart';
 import 'package:gizecare/core/theme/app_colors.dart';
 import 'package:gizecare/core/widgets/app_snackbar.dart';
+import 'package:gizecare/core/widgets/linkable_text.dart';
 import 'package:gizecare/features/calendar/domain/google_calendar_config.dart';
 import 'package:gizecare/features/gmail/domain/entities/gmail_entities.dart';
 import 'package:gizecare/features/gmail/presentation/providers/gmail_providers.dart';
@@ -549,7 +550,7 @@ class _MessageCard extends StatelessWidget {
                   plainFallback: message.bodyText,
                 )
               else
-                SelectableText(
+                LinkableText(
                   message.bodyText.trim().isEmpty
                       ? '(no text content)'
                       : message.bodyText,

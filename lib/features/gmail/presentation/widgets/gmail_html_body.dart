@@ -1,8 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_widget_from_html/flutter_widget_from_html.dart';
-import 'package:url_launcher/url_launcher.dart';
 
+import 'package:gizecare/core/browser/app_link_opener.dart';
 import 'package:gizecare/core/theme/app_colors.dart';
+import 'package:gizecare/core/widgets/linkable_text.dart';
 import 'package:gizecare/features/gmail/domain/gmail_html.dart';
 
 /// Renders email HTML with layout/styles preserved on a light mail canvas.
@@ -30,8 +31,8 @@ class GmailHtmlBody extends StatelessWidget {
         Align(
           alignment: Alignment.centerRight,
           child: TextButton.icon(
-            onPressed: () => GmailHtml.openInSystemBrowser(html),
-            icon: const Icon(Icons.open_in_new, size: 16),
+            onPressed: () => GmailHtml.openInAppBrowser(context, html),
+            icon: const Icon(Icons.open_in_browser_rounded, size: 16),
             label: const Text('Open original'),
             style: TextButton.styleFrom(
               foregroundColor: AppColors.brand,
@@ -72,9 +73,7 @@ class GmailHtmlBody extends StatelessWidget {
                     height: 1.45,
                   ),
                   onTapUrl: (url) async {
-                    final uri = Uri.tryParse(url);
-                    if (uri == null) return false;
-                    return launchUrl(uri, mode: LaunchMode.externalApplication);
+                    return AppLinkOpener.open(context, url);
                   },
                   customStylesBuilder: (element) {
                     // Keep email inline styles; lightly constrain images/tables.
@@ -107,7 +106,7 @@ class _Plain extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return SelectableText(
+    return LinkableText(
       text.trim().isEmpty ? '(no text content)' : text,
       style: Theme.of(context).textTheme.bodyMedium?.copyWith(
             height: 1.5,

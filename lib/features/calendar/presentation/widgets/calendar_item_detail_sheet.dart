@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
-import 'package:url_launcher/url_launcher.dart';
 
+import 'package:gizecare/app/router/root_navigator.dart';
+import 'package:gizecare/core/browser/app_link_opener.dart';
 import 'package:gizecare/core/theme/app_colors.dart';
 import 'package:gizecare/features/calendar/domain/entities/calendar_item.dart';
 
@@ -121,13 +122,18 @@ class _CalendarItemDetails extends StatelessWidget {
               const SizedBox(height: 8),
               TextButton.icon(
                 onPressed: () async {
-                  await launchUrl(
-                    Uri.parse(item.htmlLink!),
-                    mode: LaunchMode.externalApplication,
+                  final link = item.htmlLink!;
+                  Navigator.pop(context);
+                  final root = rootNavigatorKey.currentContext;
+                  if (root == null || !root.mounted) return;
+                  await AppLinkOpener.open(
+                    root,
+                    link,
+                    title: 'Google Calendar',
                   );
                 },
-                icon: const Icon(Icons.open_in_new_rounded, size: 18),
-                label: const Text('Open in Google Calendar'),
+                icon: const Icon(Icons.open_in_browser_rounded, size: 18),
+                label: const Text('Open in browser'),
               ),
             ],
           ],
