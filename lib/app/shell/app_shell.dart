@@ -6,8 +6,10 @@ import 'package:gizecare/app/shell/evernote_app_sidebar.dart';
 import 'package:gizecare/core/platform/app_platform.dart';
 import 'package:gizecare/core/theme/app_colors.dart';
 import 'package:gizecare/core/widgets/brand_mark.dart';
+import 'package:gizecare/features/browser/presentation/providers/browser_providers.dart';
 import 'package:gizecare/features/clock/presentation/providers/alarm_monitor.dart';
 import 'package:gizecare/features/gmail/presentation/providers/gmail_providers.dart';
+import 'package:gizecare/features/reports/presentation/providers/system_metrics_providers.dart';
 import 'package:gizecare/features/slack/presentation/providers/slack_providers.dart';
 import 'package:gizecare/features/telegram/presentation/providers/telegram_providers.dart';
 import 'package:gizecare/features/tracker/domain/entities/timer_state.dart';
@@ -79,6 +81,38 @@ class AppShell extends ConsumerWidget {
       selectedIcon: Icons.description_rounded,
       path: AppRoutes.documents,
     ),
+    const EvernoteNavItem(
+      label: 'Browser',
+      icon: Icons.language_outlined,
+      selectedIcon: Icons.language_rounded,
+      path: AppRoutes.browser,
+    ),
+    const EvernoteNavItem(
+      label: 'Apps',
+      icon: Icons.apps_outlined,
+      selectedIcon: Icons.apps_rounded,
+      path: AppRoutes.apps,
+      children: [
+        EvernoteNavItem(
+          label: 'ChatGPT',
+          icon: Icons.auto_awesome_outlined,
+          selectedIcon: Icons.auto_awesome_rounded,
+          path: AppRoutes.chatgpt,
+        ),
+        EvernoteNavItem(
+          label: 'Gemini',
+          icon: Icons.diamond_outlined,
+          selectedIcon: Icons.diamond_rounded,
+          path: AppRoutes.gemini,
+        ),
+        EvernoteNavItem(
+          label: 'YouTube',
+          icon: Icons.play_circle_outline_rounded,
+          selectedIcon: Icons.play_circle_rounded,
+          path: AppRoutes.youtube,
+        ),
+      ],
+    ),
     EvernoteNavItem(
       label: 'Messages',
       icon: Icons.forum_outlined,
@@ -106,6 +140,12 @@ class AppShell extends ConsumerWidget {
           selectedIcon: Icons.tag,
           path: AppRoutes.slack,
           badgeCount: slackUnread,
+        ),
+        const EvernoteNavItem(
+          label: 'WhatsApp',
+          icon: Icons.chat_outlined,
+          selectedIcon: Icons.chat_rounded,
+          path: AppRoutes.whatsapp,
         ),
       ],
     ),
@@ -139,6 +179,10 @@ class AppShell extends ConsumerWidget {
     final selectedIndex = _indexForPath(location, destinations);
     final timer = ref.watch(timerControllerProvider);
     ref.watch(alarmMonitorProvider);
+    // Persist host RAM/CPU/disk samples in the background for Reports → System.
+    ref.watch(systemMetricsCaptureControllerProvider);
+    // Record which features/pages are open for Reports → System usage.
+    ref.watch(featureUsageTrackerProvider).onPathChanged(location);
 
     if (AppPlatform.isMobile) {
       return _MobileShell(
@@ -149,6 +193,12 @@ class AppShell extends ConsumerWidget {
         timer: timer,
         child: child,
       );
+    }
+
+    final browserFullscreen = ref.watch(browserFullscreenProvider);
+    final hideChrome = browserFullscreen && location == AppRoutes.browser;
+    if (hideChrome) {
+      return Scaffold(body: child);
     }
 
     return CallbackShortcuts(

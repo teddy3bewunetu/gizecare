@@ -13,6 +13,32 @@ set(APPLICATION_ID "com.gizecare.gizecare")
 # versions of CMake.
 cmake_policy(SET CMP0063 NEW)
 
+# ---------------------------------------------------------------------------
+# Optional local WebKitGTK (in-app browser) without system -dev packages.
+# Prefer: sudo apt install libwebkit2gtk-4.1-dev
+# Fallback: $HOME/.local/webkit-pc + $HOME/.local/webkit-prefix (see README)
+# ---------------------------------------------------------------------------
+if(DEFINED ENV{HOME})
+  set(_gize_webkit_pc "$ENV{HOME}/.local/webkit-pc")
+  set(_gize_webkit_lib "$ENV{HOME}/.local/webkit-prefix/usr/lib/x86_64-linux-gnu")
+  if(EXISTS "${_gize_webkit_pc}/webkit2gtk-4.1.pc")
+    if(DEFINED ENV{PKG_CONFIG_PATH} AND NOT "$ENV{PKG_CONFIG_PATH}" STREQUAL "")
+      set(ENV{PKG_CONFIG_PATH} "${_gize_webkit_pc}:$ENV{PKG_CONFIG_PATH}")
+    else()
+      set(ENV{PKG_CONFIG_PATH} "${_gize_webkit_pc}")
+    endif()
+    message(STATUS "GizeCare: using local WebKitGTK pkg-config at ${_gize_webkit_pc}")
+  endif()
+  if(EXISTS "${_gize_webkit_lib}/libwebkit2gtk-4.1.so")
+    link_directories(BEFORE "${_gize_webkit_lib}")
+    if(DEFINED ENV{LIBRARY_PATH} AND NOT "$ENV{LIBRARY_PATH}" STREQUAL "")
+      set(ENV{LIBRARY_PATH} "${_gize_webkit_lib}:$ENV{LIBRARY_PATH}")
+    else()
+      set(ENV{LIBRARY_PATH} "${_gize_webkit_lib}")
+    endif()
+  endif()
+endif()
+
 # Load bundled libraries from the lib/ directory relative to the binary.
 set(CMAKE_INSTALL_RPATH "$ORIGIN/lib")
 

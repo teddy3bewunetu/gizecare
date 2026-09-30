@@ -8,6 +8,7 @@ import 'package:intl/intl.dart';
 import 'package:gizecare/core/platform/app_platform.dart';
 import 'package:gizecare/core/theme/app_colors.dart';
 import 'package:gizecare/core/widgets/app_snackbar.dart';
+import 'package:gizecare/core/widgets/linkable_text.dart';
 import 'package:gizecare/features/telegram/domain/entities/telegram_entities.dart';
 import 'package:gizecare/features/telegram/domain/telegram_config.dart';
 import 'package:gizecare/features/telegram/presentation/providers/telegram_providers.dart';
@@ -1583,7 +1584,7 @@ class _MessageBubble extends StatelessWidget {
                         if (message.hasPhoto) ...[
                           if (message.text.isNotEmpty &&
                               message.text != 'Photo') ...[
-                            Text(
+                            LinkableText(
                               message.text,
                               style: Theme.of(context)
                                   .textTheme
@@ -1614,7 +1615,7 @@ class _MessageBubble extends StatelessWidget {
                             ),
                           ),
                         ] else if (message.contentType == 'photo')
-                          Text(
+                          LinkableText(
                             message.text.isNotEmpty && message.text != 'Photo'
                                 ? message.text
                                 : '📷 Loading photo…',
@@ -1634,7 +1635,7 @@ class _MessageBubble extends StatelessWidget {
                               ),
                               const SizedBox(width: 6),
                               Flexible(
-                                child: Text(
+                                child: LinkableText(
                                   message.text.isEmpty
                                       ? 'Document'
                                       : message.text,
@@ -1657,7 +1658,7 @@ class _MessageBubble extends StatelessWidget {
                             ),
                           )
                         else
-                          Text(
+                          LinkableText(
                             message.text.isEmpty
                                 ? '📎 Attachment'
                                 : message.text,

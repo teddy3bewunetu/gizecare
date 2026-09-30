@@ -1,10 +1,11 @@
 import 'dart:io';
 
 import 'package:flutter/material.dart';
-import 'package:gizecare/core/widgets/app_snackbar.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:open_filex/open_filex.dart';
 
+import 'package:gizecare/core/browser/app_link_opener.dart';
+import 'package:gizecare/core/widgets/app_snackbar.dart';
 import 'package:gizecare/features/documents/presentation/display_name.dart';
 import 'package:gizecare/features/documents/presentation/markdown_link_resolver.dart';
 
@@ -74,15 +75,16 @@ class _MarkdownPreviewState extends State<MarkdownPreview> {
     if (href == null || href.isEmpty) return;
     if (href.startsWith('#')) return;
 
-    if (isExternalLink(href)) {
-      openExternalLink(href);
+    if (AppLinkOpener.isInAppWebUrl(href) || isExternalLink(href)) {
+      // http(s)/data → in-app browser; mailto/etc → OS via AppLinkOpener.
+      AppLinkOpener.open(context, href);
       return;
     }
 
     final basePath = widget.baseFilePath;
     final onNavigate = widget.onNavigateToFile;
     if (basePath == null || onNavigate == null) {
-      openExternalLink(href);
+      AppLinkOpener.open(context, href);
       return;
     }
 
@@ -92,7 +94,7 @@ class _MarkdownPreviewState extends State<MarkdownPreview> {
       return;
     }
 
-    openExternalLink(href);
+    AppLinkOpener.open(context, href);
   }
 
   void _scheduleScrollToMatch() {

@@ -38,12 +38,17 @@ class _EvernoteAppSidebarState extends ConsumerState<EvernoteAppSidebar> {
   @override
   void didUpdateWidget(covariant EvernoteAppSidebar oldWidget) {
     super.didUpdateWidget(oldWidget);
-    // Navigating into Messages from elsewhere should open the group again.
-    final wasInMessages = oldWidget.selectedPath.startsWith(AppRoutes.messages);
-    final nowInMessages = widget.selectedPath.startsWith(AppRoutes.messages);
-    if (nowInMessages && !wasInMessages) {
-      _groupExpandedOverride[AppRoutes.messages] = true;
+    // Navigating into Messages / Apps from elsewhere should open the group.
+    void syncGroup(String root) {
+      final wasIn = oldWidget.selectedPath.startsWith(root);
+      final nowIn = widget.selectedPath.startsWith(root);
+      if (nowIn && !wasIn) {
+        _groupExpandedOverride[root] = true;
+      }
     }
+
+    syncGroup(AppRoutes.messages);
+    syncGroup(AppRoutes.apps);
   }
 
   bool _isGroupExpanded(EvernoteNavItem item) {

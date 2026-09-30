@@ -1,9 +1,8 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_svg/flutter_svg.dart';
 import 'package:gizecare/core/constants/app_assets.dart';
 import 'package:google_fonts/google_fonts.dart';
 
-/// Brand mark: SVG logo (preferred) + vertically centered wordmark.
+/// Brand mark: logo + vertically centered wordmark.
 class BrandMark extends StatelessWidget {
   const BrandMark({
     super.key,
@@ -20,17 +19,18 @@ class BrandMark extends StatelessWidget {
   Widget build(BuildContext context) {
     final color = Theme.of(context).colorScheme.primary;
 
+    // Prefer PNG — the SVG export is optional and can fail to parse.
     final logo = SizedBox(
       width: logoSize,
       height: logoSize,
-      child: SvgPicture.asset(
-        AppAssets.logoSvg,
+      child: Image.asset(
+        AppAssets.logoMark,
         width: logoSize,
         height: logoSize,
         fit: BoxFit.contain,
-        alignment: Alignment.center,
-        placeholderBuilder: (context) => Image.asset(
-          AppAssets.logoMark,
+        filterQuality: FilterQuality.high,
+        errorBuilder: (context, error, stackTrace) => Image.asset(
+          AppAssets.logo,
           width: logoSize,
           height: logoSize,
           fit: BoxFit.contain,

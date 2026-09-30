@@ -6,11 +6,12 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 import 'package:open_filex/open_filex.dart';
-import 'package:url_launcher/url_launcher.dart';
 
+import 'package:gizecare/core/browser/app_link_opener.dart';
 import 'package:gizecare/core/platform/app_platform.dart';
 import 'package:gizecare/core/theme/app_colors.dart';
 import 'package:gizecare/core/widgets/app_snackbar.dart';
+import 'package:gizecare/core/widgets/linkable_text.dart';
 import 'package:gizecare/features/slack/domain/entities/slack_entities.dart';
 import 'package:gizecare/features/slack/domain/slack_config.dart';
 import 'package:gizecare/features/slack/presentation/providers/slack_live_sync.dart';
@@ -838,7 +839,7 @@ class _MessageBubble extends ConsumerWidget {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      if (message.text.isNotEmpty) SelectableText(message.text),
+                      if (message.text.isNotEmpty) LinkableText(message.text),
                       if (message.files.isNotEmpty) ...[
                         if (message.text.isNotEmpty) const SizedBox(height: 6),
                         for (final file in message.files)
@@ -1019,7 +1020,7 @@ class _MessageBubble extends ConsumerWidget {
       AppSnackBar.show(context, result.requireFailure.message);
       final url = file.urlPrivate;
       if (url != null) {
-        await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
+        await AppLinkOpener.open(context, url, title: file.name ?? 'File');
       }
       return;
     }
