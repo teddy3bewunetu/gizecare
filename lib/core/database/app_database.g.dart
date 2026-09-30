@@ -14594,6 +14594,1616 @@ class SlackMessagesCompanion extends UpdateCompanion<SlackMessageRow> {
   }
 }
 
+class $BrowserBookmarksTable extends BrowserBookmarks
+    with TableInfo<$BrowserBookmarksTable, BrowserBookmarkRow> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $BrowserBookmarksTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<String> id = GeneratedColumn<String>(
+    'id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _titleMeta = const VerificationMeta('title');
+  @override
+  late final GeneratedColumn<String> title = GeneratedColumn<String>(
+    'title',
+    aliasedName,
+    false,
+    additionalChecks: GeneratedColumn.checkTextLength(
+      minTextLength: 1,
+      maxTextLength: 200,
+    ),
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _urlMeta = const VerificationMeta('url');
+  @override
+  late final GeneratedColumn<String> url = GeneratedColumn<String>(
+    'url',
+    aliasedName,
+    false,
+    additionalChecks: GeneratedColumn.checkTextLength(
+      minTextLength: 1,
+      maxTextLength: 2000,
+    ),
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _faviconUrlMeta = const VerificationMeta(
+    'faviconUrl',
+  );
+  @override
+  late final GeneratedColumn<String> faviconUrl = GeneratedColumn<String>(
+    'favicon_url',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _sortOrderMeta = const VerificationMeta(
+    'sortOrder',
+  );
+  @override
+  late final GeneratedColumn<int> sortOrder = GeneratedColumn<int>(
+    'sort_order',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(0),
+  );
+  static const VerificationMeta _createdAtMeta = const VerificationMeta(
+    'createdAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> createdAt = GeneratedColumn<DateTime>(
+    'created_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: true,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    id,
+    title,
+    url,
+    faviconUrl,
+    sortOrder,
+    createdAt,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'browser_bookmarks';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<BrowserBookmarkRow> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    } else if (isInserting) {
+      context.missing(_idMeta);
+    }
+    if (data.containsKey('title')) {
+      context.handle(
+        _titleMeta,
+        title.isAcceptableOrUnknown(data['title']!, _titleMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_titleMeta);
+    }
+    if (data.containsKey('url')) {
+      context.handle(
+        _urlMeta,
+        url.isAcceptableOrUnknown(data['url']!, _urlMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_urlMeta);
+    }
+    if (data.containsKey('favicon_url')) {
+      context.handle(
+        _faviconUrlMeta,
+        faviconUrl.isAcceptableOrUnknown(data['favicon_url']!, _faviconUrlMeta),
+      );
+    }
+    if (data.containsKey('sort_order')) {
+      context.handle(
+        _sortOrderMeta,
+        sortOrder.isAcceptableOrUnknown(data['sort_order']!, _sortOrderMeta),
+      );
+    }
+    if (data.containsKey('created_at')) {
+      context.handle(
+        _createdAtMeta,
+        createdAt.isAcceptableOrUnknown(data['created_at']!, _createdAtMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_createdAtMeta);
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  BrowserBookmarkRow map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return BrowserBookmarkRow(
+      id: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}id'],
+      )!,
+      title: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}title'],
+      )!,
+      url: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}url'],
+      )!,
+      faviconUrl: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}favicon_url'],
+      ),
+      sortOrder: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}sort_order'],
+      )!,
+      createdAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}created_at'],
+      )!,
+    );
+  }
+
+  @override
+  $BrowserBookmarksTable createAlias(String alias) {
+    return $BrowserBookmarksTable(attachedDatabase, alias);
+  }
+}
+
+class BrowserBookmarkRow extends DataClass
+    implements Insertable<BrowserBookmarkRow> {
+  final String id;
+  final String title;
+  final String url;
+  final String? faviconUrl;
+  final int sortOrder;
+  final DateTime createdAt;
+  const BrowserBookmarkRow({
+    required this.id,
+    required this.title,
+    required this.url,
+    this.faviconUrl,
+    required this.sortOrder,
+    required this.createdAt,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<String>(id);
+    map['title'] = Variable<String>(title);
+    map['url'] = Variable<String>(url);
+    if (!nullToAbsent || faviconUrl != null) {
+      map['favicon_url'] = Variable<String>(faviconUrl);
+    }
+    map['sort_order'] = Variable<int>(sortOrder);
+    map['created_at'] = Variable<DateTime>(createdAt);
+    return map;
+  }
+
+  BrowserBookmarksCompanion toCompanion(bool nullToAbsent) {
+    return BrowserBookmarksCompanion(
+      id: Value(id),
+      title: Value(title),
+      url: Value(url),
+      faviconUrl: faviconUrl == null && nullToAbsent
+          ? const Value.absent()
+          : Value(faviconUrl),
+      sortOrder: Value(sortOrder),
+      createdAt: Value(createdAt),
+    );
+  }
+
+  factory BrowserBookmarkRow.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return BrowserBookmarkRow(
+      id: serializer.fromJson<String>(json['id']),
+      title: serializer.fromJson<String>(json['title']),
+      url: serializer.fromJson<String>(json['url']),
+      faviconUrl: serializer.fromJson<String?>(json['faviconUrl']),
+      sortOrder: serializer.fromJson<int>(json['sortOrder']),
+      createdAt: serializer.fromJson<DateTime>(json['createdAt']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<String>(id),
+      'title': serializer.toJson<String>(title),
+      'url': serializer.toJson<String>(url),
+      'faviconUrl': serializer.toJson<String?>(faviconUrl),
+      'sortOrder': serializer.toJson<int>(sortOrder),
+      'createdAt': serializer.toJson<DateTime>(createdAt),
+    };
+  }
+
+  BrowserBookmarkRow copyWith({
+    String? id,
+    String? title,
+    String? url,
+    Value<String?> faviconUrl = const Value.absent(),
+    int? sortOrder,
+    DateTime? createdAt,
+  }) => BrowserBookmarkRow(
+    id: id ?? this.id,
+    title: title ?? this.title,
+    url: url ?? this.url,
+    faviconUrl: faviconUrl.present ? faviconUrl.value : this.faviconUrl,
+    sortOrder: sortOrder ?? this.sortOrder,
+    createdAt: createdAt ?? this.createdAt,
+  );
+  BrowserBookmarkRow copyWithCompanion(BrowserBookmarksCompanion data) {
+    return BrowserBookmarkRow(
+      id: data.id.present ? data.id.value : this.id,
+      title: data.title.present ? data.title.value : this.title,
+      url: data.url.present ? data.url.value : this.url,
+      faviconUrl: data.faviconUrl.present
+          ? data.faviconUrl.value
+          : this.faviconUrl,
+      sortOrder: data.sortOrder.present ? data.sortOrder.value : this.sortOrder,
+      createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('BrowserBookmarkRow(')
+          ..write('id: $id, ')
+          ..write('title: $title, ')
+          ..write('url: $url, ')
+          ..write('faviconUrl: $faviconUrl, ')
+          ..write('sortOrder: $sortOrder, ')
+          ..write('createdAt: $createdAt')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode =>
+      Object.hash(id, title, url, faviconUrl, sortOrder, createdAt);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is BrowserBookmarkRow &&
+          other.id == this.id &&
+          other.title == this.title &&
+          other.url == this.url &&
+          other.faviconUrl == this.faviconUrl &&
+          other.sortOrder == this.sortOrder &&
+          other.createdAt == this.createdAt);
+}
+
+class BrowserBookmarksCompanion extends UpdateCompanion<BrowserBookmarkRow> {
+  final Value<String> id;
+  final Value<String> title;
+  final Value<String> url;
+  final Value<String?> faviconUrl;
+  final Value<int> sortOrder;
+  final Value<DateTime> createdAt;
+  final Value<int> rowid;
+  const BrowserBookmarksCompanion({
+    this.id = const Value.absent(),
+    this.title = const Value.absent(),
+    this.url = const Value.absent(),
+    this.faviconUrl = const Value.absent(),
+    this.sortOrder = const Value.absent(),
+    this.createdAt = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  BrowserBookmarksCompanion.insert({
+    required String id,
+    required String title,
+    required String url,
+    this.faviconUrl = const Value.absent(),
+    this.sortOrder = const Value.absent(),
+    required DateTime createdAt,
+    this.rowid = const Value.absent(),
+  }) : id = Value(id),
+       title = Value(title),
+       url = Value(url),
+       createdAt = Value(createdAt);
+  static Insertable<BrowserBookmarkRow> custom({
+    Expression<String>? id,
+    Expression<String>? title,
+    Expression<String>? url,
+    Expression<String>? faviconUrl,
+    Expression<int>? sortOrder,
+    Expression<DateTime>? createdAt,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (title != null) 'title': title,
+      if (url != null) 'url': url,
+      if (faviconUrl != null) 'favicon_url': faviconUrl,
+      if (sortOrder != null) 'sort_order': sortOrder,
+      if (createdAt != null) 'created_at': createdAt,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  BrowserBookmarksCompanion copyWith({
+    Value<String>? id,
+    Value<String>? title,
+    Value<String>? url,
+    Value<String?>? faviconUrl,
+    Value<int>? sortOrder,
+    Value<DateTime>? createdAt,
+    Value<int>? rowid,
+  }) {
+    return BrowserBookmarksCompanion(
+      id: id ?? this.id,
+      title: title ?? this.title,
+      url: url ?? this.url,
+      faviconUrl: faviconUrl ?? this.faviconUrl,
+      sortOrder: sortOrder ?? this.sortOrder,
+      createdAt: createdAt ?? this.createdAt,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<String>(id.value);
+    }
+    if (title.present) {
+      map['title'] = Variable<String>(title.value);
+    }
+    if (url.present) {
+      map['url'] = Variable<String>(url.value);
+    }
+    if (faviconUrl.present) {
+      map['favicon_url'] = Variable<String>(faviconUrl.value);
+    }
+    if (sortOrder.present) {
+      map['sort_order'] = Variable<int>(sortOrder.value);
+    }
+    if (createdAt.present) {
+      map['created_at'] = Variable<DateTime>(createdAt.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('BrowserBookmarksCompanion(')
+          ..write('id: $id, ')
+          ..write('title: $title, ')
+          ..write('url: $url, ')
+          ..write('faviconUrl: $faviconUrl, ')
+          ..write('sortOrder: $sortOrder, ')
+          ..write('createdAt: $createdAt, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
+class $SystemMetricSamplesTable extends SystemMetricSamples
+    with TableInfo<$SystemMetricSamplesTable, SystemMetricSampleRow> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $SystemMetricSamplesTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<String> id = GeneratedColumn<String>(
+    'id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _capturedAtMeta = const VerificationMeta(
+    'capturedAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> capturedAt = GeneratedColumn<DateTime>(
+    'captured_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _ramUsedMbMeta = const VerificationMeta(
+    'ramUsedMb',
+  );
+  @override
+  late final GeneratedColumn<int> ramUsedMb = GeneratedColumn<int>(
+    'ram_used_mb',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _ramTotalMbMeta = const VerificationMeta(
+    'ramTotalMb',
+  );
+  @override
+  late final GeneratedColumn<int> ramTotalMb = GeneratedColumn<int>(
+    'ram_total_mb',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _cpuPercentMeta = const VerificationMeta(
+    'cpuPercent',
+  );
+  @override
+  late final GeneratedColumn<double> cpuPercent = GeneratedColumn<double>(
+    'cpu_percent',
+    aliasedName,
+    false,
+    type: DriftSqlType.double,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _diskUsedMbMeta = const VerificationMeta(
+    'diskUsedMb',
+  );
+  @override
+  late final GeneratedColumn<int> diskUsedMb = GeneratedColumn<int>(
+    'disk_used_mb',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _diskTotalMbMeta = const VerificationMeta(
+    'diskTotalMb',
+  );
+  @override
+  late final GeneratedColumn<int> diskTotalMb = GeneratedColumn<int>(
+    'disk_total_mb',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _loadAvg1Meta = const VerificationMeta(
+    'loadAvg1',
+  );
+  @override
+  late final GeneratedColumn<double> loadAvg1 = GeneratedColumn<double>(
+    'load_avg1',
+    aliasedName,
+    true,
+    type: DriftSqlType.double,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _hostnameMeta = const VerificationMeta(
+    'hostname',
+  );
+  @override
+  late final GeneratedColumn<String> hostname = GeneratedColumn<String>(
+    'hostname',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _platformLabelMeta = const VerificationMeta(
+    'platformLabel',
+  );
+  @override
+  late final GeneratedColumn<String> platformLabel = GeneratedColumn<String>(
+    'platform_label',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    id,
+    capturedAt,
+    ramUsedMb,
+    ramTotalMb,
+    cpuPercent,
+    diskUsedMb,
+    diskTotalMb,
+    loadAvg1,
+    hostname,
+    platformLabel,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'system_metric_samples';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<SystemMetricSampleRow> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    } else if (isInserting) {
+      context.missing(_idMeta);
+    }
+    if (data.containsKey('captured_at')) {
+      context.handle(
+        _capturedAtMeta,
+        capturedAt.isAcceptableOrUnknown(data['captured_at']!, _capturedAtMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_capturedAtMeta);
+    }
+    if (data.containsKey('ram_used_mb')) {
+      context.handle(
+        _ramUsedMbMeta,
+        ramUsedMb.isAcceptableOrUnknown(data['ram_used_mb']!, _ramUsedMbMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_ramUsedMbMeta);
+    }
+    if (data.containsKey('ram_total_mb')) {
+      context.handle(
+        _ramTotalMbMeta,
+        ramTotalMb.isAcceptableOrUnknown(
+          data['ram_total_mb']!,
+          _ramTotalMbMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_ramTotalMbMeta);
+    }
+    if (data.containsKey('cpu_percent')) {
+      context.handle(
+        _cpuPercentMeta,
+        cpuPercent.isAcceptableOrUnknown(data['cpu_percent']!, _cpuPercentMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_cpuPercentMeta);
+    }
+    if (data.containsKey('disk_used_mb')) {
+      context.handle(
+        _diskUsedMbMeta,
+        diskUsedMb.isAcceptableOrUnknown(
+          data['disk_used_mb']!,
+          _diskUsedMbMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_diskUsedMbMeta);
+    }
+    if (data.containsKey('disk_total_mb')) {
+      context.handle(
+        _diskTotalMbMeta,
+        diskTotalMb.isAcceptableOrUnknown(
+          data['disk_total_mb']!,
+          _diskTotalMbMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_diskTotalMbMeta);
+    }
+    if (data.containsKey('load_avg1')) {
+      context.handle(
+        _loadAvg1Meta,
+        loadAvg1.isAcceptableOrUnknown(data['load_avg1']!, _loadAvg1Meta),
+      );
+    }
+    if (data.containsKey('hostname')) {
+      context.handle(
+        _hostnameMeta,
+        hostname.isAcceptableOrUnknown(data['hostname']!, _hostnameMeta),
+      );
+    }
+    if (data.containsKey('platform_label')) {
+      context.handle(
+        _platformLabelMeta,
+        platformLabel.isAcceptableOrUnknown(
+          data['platform_label']!,
+          _platformLabelMeta,
+        ),
+      );
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  SystemMetricSampleRow map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return SystemMetricSampleRow(
+      id: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}id'],
+      )!,
+      capturedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}captured_at'],
+      )!,
+      ramUsedMb: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}ram_used_mb'],
+      )!,
+      ramTotalMb: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}ram_total_mb'],
+      )!,
+      cpuPercent: attachedDatabase.typeMapping.read(
+        DriftSqlType.double,
+        data['${effectivePrefix}cpu_percent'],
+      )!,
+      diskUsedMb: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}disk_used_mb'],
+      )!,
+      diskTotalMb: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}disk_total_mb'],
+      )!,
+      loadAvg1: attachedDatabase.typeMapping.read(
+        DriftSqlType.double,
+        data['${effectivePrefix}load_avg1'],
+      ),
+      hostname: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}hostname'],
+      ),
+      platformLabel: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}platform_label'],
+      ),
+    );
+  }
+
+  @override
+  $SystemMetricSamplesTable createAlias(String alias) {
+    return $SystemMetricSamplesTable(attachedDatabase, alias);
+  }
+}
+
+class SystemMetricSampleRow extends DataClass
+    implements Insertable<SystemMetricSampleRow> {
+  final String id;
+  final DateTime capturedAt;
+
+  /// Host RAM used, megabytes.
+  final int ramUsedMb;
+  final int ramTotalMb;
+
+  /// 0–100 CPU utilization estimate.
+  final double cpuPercent;
+
+  /// Root (or primary) volume used / total, megabytes.
+  final int diskUsedMb;
+  final int diskTotalMb;
+
+  /// 1-minute load average when available.
+  final double? loadAvg1;
+  final String? hostname;
+  final String? platformLabel;
+  const SystemMetricSampleRow({
+    required this.id,
+    required this.capturedAt,
+    required this.ramUsedMb,
+    required this.ramTotalMb,
+    required this.cpuPercent,
+    required this.diskUsedMb,
+    required this.diskTotalMb,
+    this.loadAvg1,
+    this.hostname,
+    this.platformLabel,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<String>(id);
+    map['captured_at'] = Variable<DateTime>(capturedAt);
+    map['ram_used_mb'] = Variable<int>(ramUsedMb);
+    map['ram_total_mb'] = Variable<int>(ramTotalMb);
+    map['cpu_percent'] = Variable<double>(cpuPercent);
+    map['disk_used_mb'] = Variable<int>(diskUsedMb);
+    map['disk_total_mb'] = Variable<int>(diskTotalMb);
+    if (!nullToAbsent || loadAvg1 != null) {
+      map['load_avg1'] = Variable<double>(loadAvg1);
+    }
+    if (!nullToAbsent || hostname != null) {
+      map['hostname'] = Variable<String>(hostname);
+    }
+    if (!nullToAbsent || platformLabel != null) {
+      map['platform_label'] = Variable<String>(platformLabel);
+    }
+    return map;
+  }
+
+  SystemMetricSamplesCompanion toCompanion(bool nullToAbsent) {
+    return SystemMetricSamplesCompanion(
+      id: Value(id),
+      capturedAt: Value(capturedAt),
+      ramUsedMb: Value(ramUsedMb),
+      ramTotalMb: Value(ramTotalMb),
+      cpuPercent: Value(cpuPercent),
+      diskUsedMb: Value(diskUsedMb),
+      diskTotalMb: Value(diskTotalMb),
+      loadAvg1: loadAvg1 == null && nullToAbsent
+          ? const Value.absent()
+          : Value(loadAvg1),
+      hostname: hostname == null && nullToAbsent
+          ? const Value.absent()
+          : Value(hostname),
+      platformLabel: platformLabel == null && nullToAbsent
+          ? const Value.absent()
+          : Value(platformLabel),
+    );
+  }
+
+  factory SystemMetricSampleRow.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return SystemMetricSampleRow(
+      id: serializer.fromJson<String>(json['id']),
+      capturedAt: serializer.fromJson<DateTime>(json['capturedAt']),
+      ramUsedMb: serializer.fromJson<int>(json['ramUsedMb']),
+      ramTotalMb: serializer.fromJson<int>(json['ramTotalMb']),
+      cpuPercent: serializer.fromJson<double>(json['cpuPercent']),
+      diskUsedMb: serializer.fromJson<int>(json['diskUsedMb']),
+      diskTotalMb: serializer.fromJson<int>(json['diskTotalMb']),
+      loadAvg1: serializer.fromJson<double?>(json['loadAvg1']),
+      hostname: serializer.fromJson<String?>(json['hostname']),
+      platformLabel: serializer.fromJson<String?>(json['platformLabel']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<String>(id),
+      'capturedAt': serializer.toJson<DateTime>(capturedAt),
+      'ramUsedMb': serializer.toJson<int>(ramUsedMb),
+      'ramTotalMb': serializer.toJson<int>(ramTotalMb),
+      'cpuPercent': serializer.toJson<double>(cpuPercent),
+      'diskUsedMb': serializer.toJson<int>(diskUsedMb),
+      'diskTotalMb': serializer.toJson<int>(diskTotalMb),
+      'loadAvg1': serializer.toJson<double?>(loadAvg1),
+      'hostname': serializer.toJson<String?>(hostname),
+      'platformLabel': serializer.toJson<String?>(platformLabel),
+    };
+  }
+
+  SystemMetricSampleRow copyWith({
+    String? id,
+    DateTime? capturedAt,
+    int? ramUsedMb,
+    int? ramTotalMb,
+    double? cpuPercent,
+    int? diskUsedMb,
+    int? diskTotalMb,
+    Value<double?> loadAvg1 = const Value.absent(),
+    Value<String?> hostname = const Value.absent(),
+    Value<String?> platformLabel = const Value.absent(),
+  }) => SystemMetricSampleRow(
+    id: id ?? this.id,
+    capturedAt: capturedAt ?? this.capturedAt,
+    ramUsedMb: ramUsedMb ?? this.ramUsedMb,
+    ramTotalMb: ramTotalMb ?? this.ramTotalMb,
+    cpuPercent: cpuPercent ?? this.cpuPercent,
+    diskUsedMb: diskUsedMb ?? this.diskUsedMb,
+    diskTotalMb: diskTotalMb ?? this.diskTotalMb,
+    loadAvg1: loadAvg1.present ? loadAvg1.value : this.loadAvg1,
+    hostname: hostname.present ? hostname.value : this.hostname,
+    platformLabel: platformLabel.present
+        ? platformLabel.value
+        : this.platformLabel,
+  );
+  SystemMetricSampleRow copyWithCompanion(SystemMetricSamplesCompanion data) {
+    return SystemMetricSampleRow(
+      id: data.id.present ? data.id.value : this.id,
+      capturedAt: data.capturedAt.present
+          ? data.capturedAt.value
+          : this.capturedAt,
+      ramUsedMb: data.ramUsedMb.present ? data.ramUsedMb.value : this.ramUsedMb,
+      ramTotalMb: data.ramTotalMb.present
+          ? data.ramTotalMb.value
+          : this.ramTotalMb,
+      cpuPercent: data.cpuPercent.present
+          ? data.cpuPercent.value
+          : this.cpuPercent,
+      diskUsedMb: data.diskUsedMb.present
+          ? data.diskUsedMb.value
+          : this.diskUsedMb,
+      diskTotalMb: data.diskTotalMb.present
+          ? data.diskTotalMb.value
+          : this.diskTotalMb,
+      loadAvg1: data.loadAvg1.present ? data.loadAvg1.value : this.loadAvg1,
+      hostname: data.hostname.present ? data.hostname.value : this.hostname,
+      platformLabel: data.platformLabel.present
+          ? data.platformLabel.value
+          : this.platformLabel,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('SystemMetricSampleRow(')
+          ..write('id: $id, ')
+          ..write('capturedAt: $capturedAt, ')
+          ..write('ramUsedMb: $ramUsedMb, ')
+          ..write('ramTotalMb: $ramTotalMb, ')
+          ..write('cpuPercent: $cpuPercent, ')
+          ..write('diskUsedMb: $diskUsedMb, ')
+          ..write('diskTotalMb: $diskTotalMb, ')
+          ..write('loadAvg1: $loadAvg1, ')
+          ..write('hostname: $hostname, ')
+          ..write('platformLabel: $platformLabel')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(
+    id,
+    capturedAt,
+    ramUsedMb,
+    ramTotalMb,
+    cpuPercent,
+    diskUsedMb,
+    diskTotalMb,
+    loadAvg1,
+    hostname,
+    platformLabel,
+  );
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is SystemMetricSampleRow &&
+          other.id == this.id &&
+          other.capturedAt == this.capturedAt &&
+          other.ramUsedMb == this.ramUsedMb &&
+          other.ramTotalMb == this.ramTotalMb &&
+          other.cpuPercent == this.cpuPercent &&
+          other.diskUsedMb == this.diskUsedMb &&
+          other.diskTotalMb == this.diskTotalMb &&
+          other.loadAvg1 == this.loadAvg1 &&
+          other.hostname == this.hostname &&
+          other.platformLabel == this.platformLabel);
+}
+
+class SystemMetricSamplesCompanion
+    extends UpdateCompanion<SystemMetricSampleRow> {
+  final Value<String> id;
+  final Value<DateTime> capturedAt;
+  final Value<int> ramUsedMb;
+  final Value<int> ramTotalMb;
+  final Value<double> cpuPercent;
+  final Value<int> diskUsedMb;
+  final Value<int> diskTotalMb;
+  final Value<double?> loadAvg1;
+  final Value<String?> hostname;
+  final Value<String?> platformLabel;
+  final Value<int> rowid;
+  const SystemMetricSamplesCompanion({
+    this.id = const Value.absent(),
+    this.capturedAt = const Value.absent(),
+    this.ramUsedMb = const Value.absent(),
+    this.ramTotalMb = const Value.absent(),
+    this.cpuPercent = const Value.absent(),
+    this.diskUsedMb = const Value.absent(),
+    this.diskTotalMb = const Value.absent(),
+    this.loadAvg1 = const Value.absent(),
+    this.hostname = const Value.absent(),
+    this.platformLabel = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  SystemMetricSamplesCompanion.insert({
+    required String id,
+    required DateTime capturedAt,
+    required int ramUsedMb,
+    required int ramTotalMb,
+    required double cpuPercent,
+    required int diskUsedMb,
+    required int diskTotalMb,
+    this.loadAvg1 = const Value.absent(),
+    this.hostname = const Value.absent(),
+    this.platformLabel = const Value.absent(),
+    this.rowid = const Value.absent(),
+  }) : id = Value(id),
+       capturedAt = Value(capturedAt),
+       ramUsedMb = Value(ramUsedMb),
+       ramTotalMb = Value(ramTotalMb),
+       cpuPercent = Value(cpuPercent),
+       diskUsedMb = Value(diskUsedMb),
+       diskTotalMb = Value(diskTotalMb);
+  static Insertable<SystemMetricSampleRow> custom({
+    Expression<String>? id,
+    Expression<DateTime>? capturedAt,
+    Expression<int>? ramUsedMb,
+    Expression<int>? ramTotalMb,
+    Expression<double>? cpuPercent,
+    Expression<int>? diskUsedMb,
+    Expression<int>? diskTotalMb,
+    Expression<double>? loadAvg1,
+    Expression<String>? hostname,
+    Expression<String>? platformLabel,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (capturedAt != null) 'captured_at': capturedAt,
+      if (ramUsedMb != null) 'ram_used_mb': ramUsedMb,
+      if (ramTotalMb != null) 'ram_total_mb': ramTotalMb,
+      if (cpuPercent != null) 'cpu_percent': cpuPercent,
+      if (diskUsedMb != null) 'disk_used_mb': diskUsedMb,
+      if (diskTotalMb != null) 'disk_total_mb': diskTotalMb,
+      if (loadAvg1 != null) 'load_avg1': loadAvg1,
+      if (hostname != null) 'hostname': hostname,
+      if (platformLabel != null) 'platform_label': platformLabel,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  SystemMetricSamplesCompanion copyWith({
+    Value<String>? id,
+    Value<DateTime>? capturedAt,
+    Value<int>? ramUsedMb,
+    Value<int>? ramTotalMb,
+    Value<double>? cpuPercent,
+    Value<int>? diskUsedMb,
+    Value<int>? diskTotalMb,
+    Value<double?>? loadAvg1,
+    Value<String?>? hostname,
+    Value<String?>? platformLabel,
+    Value<int>? rowid,
+  }) {
+    return SystemMetricSamplesCompanion(
+      id: id ?? this.id,
+      capturedAt: capturedAt ?? this.capturedAt,
+      ramUsedMb: ramUsedMb ?? this.ramUsedMb,
+      ramTotalMb: ramTotalMb ?? this.ramTotalMb,
+      cpuPercent: cpuPercent ?? this.cpuPercent,
+      diskUsedMb: diskUsedMb ?? this.diskUsedMb,
+      diskTotalMb: diskTotalMb ?? this.diskTotalMb,
+      loadAvg1: loadAvg1 ?? this.loadAvg1,
+      hostname: hostname ?? this.hostname,
+      platformLabel: platformLabel ?? this.platformLabel,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<String>(id.value);
+    }
+    if (capturedAt.present) {
+      map['captured_at'] = Variable<DateTime>(capturedAt.value);
+    }
+    if (ramUsedMb.present) {
+      map['ram_used_mb'] = Variable<int>(ramUsedMb.value);
+    }
+    if (ramTotalMb.present) {
+      map['ram_total_mb'] = Variable<int>(ramTotalMb.value);
+    }
+    if (cpuPercent.present) {
+      map['cpu_percent'] = Variable<double>(cpuPercent.value);
+    }
+    if (diskUsedMb.present) {
+      map['disk_used_mb'] = Variable<int>(diskUsedMb.value);
+    }
+    if (diskTotalMb.present) {
+      map['disk_total_mb'] = Variable<int>(diskTotalMb.value);
+    }
+    if (loadAvg1.present) {
+      map['load_avg1'] = Variable<double>(loadAvg1.value);
+    }
+    if (hostname.present) {
+      map['hostname'] = Variable<String>(hostname.value);
+    }
+    if (platformLabel.present) {
+      map['platform_label'] = Variable<String>(platformLabel.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('SystemMetricSamplesCompanion(')
+          ..write('id: $id, ')
+          ..write('capturedAt: $capturedAt, ')
+          ..write('ramUsedMb: $ramUsedMb, ')
+          ..write('ramTotalMb: $ramTotalMb, ')
+          ..write('cpuPercent: $cpuPercent, ')
+          ..write('diskUsedMb: $diskUsedMb, ')
+          ..write('diskTotalMb: $diskTotalMb, ')
+          ..write('loadAvg1: $loadAvg1, ')
+          ..write('hostname: $hostname, ')
+          ..write('platformLabel: $platformLabel, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
+class $FeatureUsageSessionsTable extends FeatureUsageSessions
+    with TableInfo<$FeatureUsageSessionsTable, FeatureUsageSessionRow> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $FeatureUsageSessionsTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<String> id = GeneratedColumn<String>(
+    'id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _featureKeyMeta = const VerificationMeta(
+    'featureKey',
+  );
+  @override
+  late final GeneratedColumn<String> featureKey = GeneratedColumn<String>(
+    'feature_key',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _featureLabelMeta = const VerificationMeta(
+    'featureLabel',
+  );
+  @override
+  late final GeneratedColumn<String> featureLabel = GeneratedColumn<String>(
+    'feature_label',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _startedAtMeta = const VerificationMeta(
+    'startedAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> startedAt = GeneratedColumn<DateTime>(
+    'started_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _endedAtMeta = const VerificationMeta(
+    'endedAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> endedAt = GeneratedColumn<DateTime>(
+    'ended_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _durationMsMeta = const VerificationMeta(
+    'durationMs',
+  );
+  @override
+  late final GeneratedColumn<int> durationMs = GeneratedColumn<int>(
+    'duration_ms',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _avgRamPercentMeta = const VerificationMeta(
+    'avgRamPercent',
+  );
+  @override
+  late final GeneratedColumn<double> avgRamPercent = GeneratedColumn<double>(
+    'avg_ram_percent',
+    aliasedName,
+    true,
+    type: DriftSqlType.double,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _avgCpuPercentMeta = const VerificationMeta(
+    'avgCpuPercent',
+  );
+  @override
+  late final GeneratedColumn<double> avgCpuPercent = GeneratedColumn<double>(
+    'avg_cpu_percent',
+    aliasedName,
+    true,
+    type: DriftSqlType.double,
+    requiredDuringInsert: false,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    id,
+    featureKey,
+    featureLabel,
+    startedAt,
+    endedAt,
+    durationMs,
+    avgRamPercent,
+    avgCpuPercent,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'feature_usage_sessions';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<FeatureUsageSessionRow> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    } else if (isInserting) {
+      context.missing(_idMeta);
+    }
+    if (data.containsKey('feature_key')) {
+      context.handle(
+        _featureKeyMeta,
+        featureKey.isAcceptableOrUnknown(data['feature_key']!, _featureKeyMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_featureKeyMeta);
+    }
+    if (data.containsKey('feature_label')) {
+      context.handle(
+        _featureLabelMeta,
+        featureLabel.isAcceptableOrUnknown(
+          data['feature_label']!,
+          _featureLabelMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_featureLabelMeta);
+    }
+    if (data.containsKey('started_at')) {
+      context.handle(
+        _startedAtMeta,
+        startedAt.isAcceptableOrUnknown(data['started_at']!, _startedAtMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_startedAtMeta);
+    }
+    if (data.containsKey('ended_at')) {
+      context.handle(
+        _endedAtMeta,
+        endedAt.isAcceptableOrUnknown(data['ended_at']!, _endedAtMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_endedAtMeta);
+    }
+    if (data.containsKey('duration_ms')) {
+      context.handle(
+        _durationMsMeta,
+        durationMs.isAcceptableOrUnknown(data['duration_ms']!, _durationMsMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_durationMsMeta);
+    }
+    if (data.containsKey('avg_ram_percent')) {
+      context.handle(
+        _avgRamPercentMeta,
+        avgRamPercent.isAcceptableOrUnknown(
+          data['avg_ram_percent']!,
+          _avgRamPercentMeta,
+        ),
+      );
+    }
+    if (data.containsKey('avg_cpu_percent')) {
+      context.handle(
+        _avgCpuPercentMeta,
+        avgCpuPercent.isAcceptableOrUnknown(
+          data['avg_cpu_percent']!,
+          _avgCpuPercentMeta,
+        ),
+      );
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  FeatureUsageSessionRow map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return FeatureUsageSessionRow(
+      id: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}id'],
+      )!,
+      featureKey: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}feature_key'],
+      )!,
+      featureLabel: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}feature_label'],
+      )!,
+      startedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}started_at'],
+      )!,
+      endedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}ended_at'],
+      )!,
+      durationMs: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}duration_ms'],
+      )!,
+      avgRamPercent: attachedDatabase.typeMapping.read(
+        DriftSqlType.double,
+        data['${effectivePrefix}avg_ram_percent'],
+      ),
+      avgCpuPercent: attachedDatabase.typeMapping.read(
+        DriftSqlType.double,
+        data['${effectivePrefix}avg_cpu_percent'],
+      ),
+    );
+  }
+
+  @override
+  $FeatureUsageSessionsTable createAlias(String alias) {
+    return $FeatureUsageSessionsTable(attachedDatabase, alias);
+  }
+}
+
+class FeatureUsageSessionRow extends DataClass
+    implements Insertable<FeatureUsageSessionRow> {
+  final String id;
+
+  /// Stable key, e.g. `notes`, `chatgpt`, `gmail`.
+  final String featureKey;
+  final String featureLabel;
+  final DateTime startedAt;
+  final DateTime endedAt;
+
+  /// Closed interval length in milliseconds.
+  final int durationMs;
+
+  /// Average host RAM % while this feature was open (0–100).
+  final double? avgRamPercent;
+
+  /// Average host CPU % while this feature was open (0–100).
+  final double? avgCpuPercent;
+  const FeatureUsageSessionRow({
+    required this.id,
+    required this.featureKey,
+    required this.featureLabel,
+    required this.startedAt,
+    required this.endedAt,
+    required this.durationMs,
+    this.avgRamPercent,
+    this.avgCpuPercent,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<String>(id);
+    map['feature_key'] = Variable<String>(featureKey);
+    map['feature_label'] = Variable<String>(featureLabel);
+    map['started_at'] = Variable<DateTime>(startedAt);
+    map['ended_at'] = Variable<DateTime>(endedAt);
+    map['duration_ms'] = Variable<int>(durationMs);
+    if (!nullToAbsent || avgRamPercent != null) {
+      map['avg_ram_percent'] = Variable<double>(avgRamPercent);
+    }
+    if (!nullToAbsent || avgCpuPercent != null) {
+      map['avg_cpu_percent'] = Variable<double>(avgCpuPercent);
+    }
+    return map;
+  }
+
+  FeatureUsageSessionsCompanion toCompanion(bool nullToAbsent) {
+    return FeatureUsageSessionsCompanion(
+      id: Value(id),
+      featureKey: Value(featureKey),
+      featureLabel: Value(featureLabel),
+      startedAt: Value(startedAt),
+      endedAt: Value(endedAt),
+      durationMs: Value(durationMs),
+      avgRamPercent: avgRamPercent == null && nullToAbsent
+          ? const Value.absent()
+          : Value(avgRamPercent),
+      avgCpuPercent: avgCpuPercent == null && nullToAbsent
+          ? const Value.absent()
+          : Value(avgCpuPercent),
+    );
+  }
+
+  factory FeatureUsageSessionRow.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return FeatureUsageSessionRow(
+      id: serializer.fromJson<String>(json['id']),
+      featureKey: serializer.fromJson<String>(json['featureKey']),
+      featureLabel: serializer.fromJson<String>(json['featureLabel']),
+      startedAt: serializer.fromJson<DateTime>(json['startedAt']),
+      endedAt: serializer.fromJson<DateTime>(json['endedAt']),
+      durationMs: serializer.fromJson<int>(json['durationMs']),
+      avgRamPercent: serializer.fromJson<double?>(json['avgRamPercent']),
+      avgCpuPercent: serializer.fromJson<double?>(json['avgCpuPercent']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<String>(id),
+      'featureKey': serializer.toJson<String>(featureKey),
+      'featureLabel': serializer.toJson<String>(featureLabel),
+      'startedAt': serializer.toJson<DateTime>(startedAt),
+      'endedAt': serializer.toJson<DateTime>(endedAt),
+      'durationMs': serializer.toJson<int>(durationMs),
+      'avgRamPercent': serializer.toJson<double?>(avgRamPercent),
+      'avgCpuPercent': serializer.toJson<double?>(avgCpuPercent),
+    };
+  }
+
+  FeatureUsageSessionRow copyWith({
+    String? id,
+    String? featureKey,
+    String? featureLabel,
+    DateTime? startedAt,
+    DateTime? endedAt,
+    int? durationMs,
+    Value<double?> avgRamPercent = const Value.absent(),
+    Value<double?> avgCpuPercent = const Value.absent(),
+  }) => FeatureUsageSessionRow(
+    id: id ?? this.id,
+    featureKey: featureKey ?? this.featureKey,
+    featureLabel: featureLabel ?? this.featureLabel,
+    startedAt: startedAt ?? this.startedAt,
+    endedAt: endedAt ?? this.endedAt,
+    durationMs: durationMs ?? this.durationMs,
+    avgRamPercent: avgRamPercent.present
+        ? avgRamPercent.value
+        : this.avgRamPercent,
+    avgCpuPercent: avgCpuPercent.present
+        ? avgCpuPercent.value
+        : this.avgCpuPercent,
+  );
+  FeatureUsageSessionRow copyWithCompanion(FeatureUsageSessionsCompanion data) {
+    return FeatureUsageSessionRow(
+      id: data.id.present ? data.id.value : this.id,
+      featureKey: data.featureKey.present
+          ? data.featureKey.value
+          : this.featureKey,
+      featureLabel: data.featureLabel.present
+          ? data.featureLabel.value
+          : this.featureLabel,
+      startedAt: data.startedAt.present ? data.startedAt.value : this.startedAt,
+      endedAt: data.endedAt.present ? data.endedAt.value : this.endedAt,
+      durationMs: data.durationMs.present
+          ? data.durationMs.value
+          : this.durationMs,
+      avgRamPercent: data.avgRamPercent.present
+          ? data.avgRamPercent.value
+          : this.avgRamPercent,
+      avgCpuPercent: data.avgCpuPercent.present
+          ? data.avgCpuPercent.value
+          : this.avgCpuPercent,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('FeatureUsageSessionRow(')
+          ..write('id: $id, ')
+          ..write('featureKey: $featureKey, ')
+          ..write('featureLabel: $featureLabel, ')
+          ..write('startedAt: $startedAt, ')
+          ..write('endedAt: $endedAt, ')
+          ..write('durationMs: $durationMs, ')
+          ..write('avgRamPercent: $avgRamPercent, ')
+          ..write('avgCpuPercent: $avgCpuPercent')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(
+    id,
+    featureKey,
+    featureLabel,
+    startedAt,
+    endedAt,
+    durationMs,
+    avgRamPercent,
+    avgCpuPercent,
+  );
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is FeatureUsageSessionRow &&
+          other.id == this.id &&
+          other.featureKey == this.featureKey &&
+          other.featureLabel == this.featureLabel &&
+          other.startedAt == this.startedAt &&
+          other.endedAt == this.endedAt &&
+          other.durationMs == this.durationMs &&
+          other.avgRamPercent == this.avgRamPercent &&
+          other.avgCpuPercent == this.avgCpuPercent);
+}
+
+class FeatureUsageSessionsCompanion
+    extends UpdateCompanion<FeatureUsageSessionRow> {
+  final Value<String> id;
+  final Value<String> featureKey;
+  final Value<String> featureLabel;
+  final Value<DateTime> startedAt;
+  final Value<DateTime> endedAt;
+  final Value<int> durationMs;
+  final Value<double?> avgRamPercent;
+  final Value<double?> avgCpuPercent;
+  final Value<int> rowid;
+  const FeatureUsageSessionsCompanion({
+    this.id = const Value.absent(),
+    this.featureKey = const Value.absent(),
+    this.featureLabel = const Value.absent(),
+    this.startedAt = const Value.absent(),
+    this.endedAt = const Value.absent(),
+    this.durationMs = const Value.absent(),
+    this.avgRamPercent = const Value.absent(),
+    this.avgCpuPercent = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  FeatureUsageSessionsCompanion.insert({
+    required String id,
+    required String featureKey,
+    required String featureLabel,
+    required DateTime startedAt,
+    required DateTime endedAt,
+    required int durationMs,
+    this.avgRamPercent = const Value.absent(),
+    this.avgCpuPercent = const Value.absent(),
+    this.rowid = const Value.absent(),
+  }) : id = Value(id),
+       featureKey = Value(featureKey),
+       featureLabel = Value(featureLabel),
+       startedAt = Value(startedAt),
+       endedAt = Value(endedAt),
+       durationMs = Value(durationMs);
+  static Insertable<FeatureUsageSessionRow> custom({
+    Expression<String>? id,
+    Expression<String>? featureKey,
+    Expression<String>? featureLabel,
+    Expression<DateTime>? startedAt,
+    Expression<DateTime>? endedAt,
+    Expression<int>? durationMs,
+    Expression<double>? avgRamPercent,
+    Expression<double>? avgCpuPercent,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (featureKey != null) 'feature_key': featureKey,
+      if (featureLabel != null) 'feature_label': featureLabel,
+      if (startedAt != null) 'started_at': startedAt,
+      if (endedAt != null) 'ended_at': endedAt,
+      if (durationMs != null) 'duration_ms': durationMs,
+      if (avgRamPercent != null) 'avg_ram_percent': avgRamPercent,
+      if (avgCpuPercent != null) 'avg_cpu_percent': avgCpuPercent,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  FeatureUsageSessionsCompanion copyWith({
+    Value<String>? id,
+    Value<String>? featureKey,
+    Value<String>? featureLabel,
+    Value<DateTime>? startedAt,
+    Value<DateTime>? endedAt,
+    Value<int>? durationMs,
+    Value<double?>? avgRamPercent,
+    Value<double?>? avgCpuPercent,
+    Value<int>? rowid,
+  }) {
+    return FeatureUsageSessionsCompanion(
+      id: id ?? this.id,
+      featureKey: featureKey ?? this.featureKey,
+      featureLabel: featureLabel ?? this.featureLabel,
+      startedAt: startedAt ?? this.startedAt,
+      endedAt: endedAt ?? this.endedAt,
+      durationMs: durationMs ?? this.durationMs,
+      avgRamPercent: avgRamPercent ?? this.avgRamPercent,
+      avgCpuPercent: avgCpuPercent ?? this.avgCpuPercent,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<String>(id.value);
+    }
+    if (featureKey.present) {
+      map['feature_key'] = Variable<String>(featureKey.value);
+    }
+    if (featureLabel.present) {
+      map['feature_label'] = Variable<String>(featureLabel.value);
+    }
+    if (startedAt.present) {
+      map['started_at'] = Variable<DateTime>(startedAt.value);
+    }
+    if (endedAt.present) {
+      map['ended_at'] = Variable<DateTime>(endedAt.value);
+    }
+    if (durationMs.present) {
+      map['duration_ms'] = Variable<int>(durationMs.value);
+    }
+    if (avgRamPercent.present) {
+      map['avg_ram_percent'] = Variable<double>(avgRamPercent.value);
+    }
+    if (avgCpuPercent.present) {
+      map['avg_cpu_percent'] = Variable<double>(avgCpuPercent.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('FeatureUsageSessionsCompanion(')
+          ..write('id: $id, ')
+          ..write('featureKey: $featureKey, ')
+          ..write('featureLabel: $featureLabel, ')
+          ..write('startedAt: $startedAt, ')
+          ..write('endedAt: $endedAt, ')
+          ..write('durationMs: $durationMs, ')
+          ..write('avgRamPercent: $avgRamPercent, ')
+          ..write('avgCpuPercent: $avgCpuPercent, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
 abstract class _$AppDatabase extends GeneratedDatabase {
   _$AppDatabase(QueryExecutor e) : super(e);
   $AppDatabaseManager get managers => $AppDatabaseManager(this);
@@ -14639,6 +16249,13 @@ abstract class _$AppDatabase extends GeneratedDatabase {
   late final $SlackConversationsTable slackConversations =
       $SlackConversationsTable(this);
   late final $SlackMessagesTable slackMessages = $SlackMessagesTable(this);
+  late final $BrowserBookmarksTable browserBookmarks = $BrowserBookmarksTable(
+    this,
+  );
+  late final $SystemMetricSamplesTable systemMetricSamples =
+      $SystemMetricSamplesTable(this);
+  late final $FeatureUsageSessionsTable featureUsageSessions =
+      $FeatureUsageSessionsTable(this);
   @override
   Iterable<TableInfo<Table, Object?>> get allTables =>
       allSchemaEntities.whereType<TableInfo<Table, Object?>>();
@@ -14673,6 +16290,9 @@ abstract class _$AppDatabase extends GeneratedDatabase {
     slackAccounts,
     slackConversations,
     slackMessages,
+    browserBookmarks,
+    systemMetricSamples,
+    featureUsageSessions,
   ];
   @override
   StreamQueryUpdateRules get streamUpdateRules => const StreamQueryUpdateRules([
@@ -27514,6 +29134,843 @@ typedef $$SlackMessagesTableProcessedTableManager =
       SlackMessageRow,
       PrefetchHooks Function({bool accountId})
     >;
+typedef $$BrowserBookmarksTableCreateCompanionBuilder =
+    BrowserBookmarksCompanion Function({
+      required String id,
+      required String title,
+      required String url,
+      Value<String?> faviconUrl,
+      Value<int> sortOrder,
+      required DateTime createdAt,
+      Value<int> rowid,
+    });
+typedef $$BrowserBookmarksTableUpdateCompanionBuilder =
+    BrowserBookmarksCompanion Function({
+      Value<String> id,
+      Value<String> title,
+      Value<String> url,
+      Value<String?> faviconUrl,
+      Value<int> sortOrder,
+      Value<DateTime> createdAt,
+      Value<int> rowid,
+    });
+
+class $$BrowserBookmarksTableFilterComposer
+    extends Composer<_$AppDatabase, $BrowserBookmarksTable> {
+  $$BrowserBookmarksTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<String> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get title => $composableBuilder(
+    column: $table.title,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get url => $composableBuilder(
+    column: $table.url,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get faviconUrl => $composableBuilder(
+    column: $table.faviconUrl,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get sortOrder => $composableBuilder(
+    column: $table.sortOrder,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnFilters(column),
+  );
+}
+
+class $$BrowserBookmarksTableOrderingComposer
+    extends Composer<_$AppDatabase, $BrowserBookmarksTable> {
+  $$BrowserBookmarksTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<String> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get title => $composableBuilder(
+    column: $table.title,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get url => $composableBuilder(
+    column: $table.url,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get faviconUrl => $composableBuilder(
+    column: $table.faviconUrl,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get sortOrder => $composableBuilder(
+    column: $table.sortOrder,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$BrowserBookmarksTableAnnotationComposer
+    extends Composer<_$AppDatabase, $BrowserBookmarksTable> {
+  $$BrowserBookmarksTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<String> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<String> get title =>
+      $composableBuilder(column: $table.title, builder: (column) => column);
+
+  GeneratedColumn<String> get url =>
+      $composableBuilder(column: $table.url, builder: (column) => column);
+
+  GeneratedColumn<String> get faviconUrl => $composableBuilder(
+    column: $table.faviconUrl,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get sortOrder =>
+      $composableBuilder(column: $table.sortOrder, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get createdAt =>
+      $composableBuilder(column: $table.createdAt, builder: (column) => column);
+}
+
+class $$BrowserBookmarksTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $BrowserBookmarksTable,
+          BrowserBookmarkRow,
+          $$BrowserBookmarksTableFilterComposer,
+          $$BrowserBookmarksTableOrderingComposer,
+          $$BrowserBookmarksTableAnnotationComposer,
+          $$BrowserBookmarksTableCreateCompanionBuilder,
+          $$BrowserBookmarksTableUpdateCompanionBuilder,
+          (
+            BrowserBookmarkRow,
+            BaseReferences<
+              _$AppDatabase,
+              $BrowserBookmarksTable,
+              BrowserBookmarkRow
+            >,
+          ),
+          BrowserBookmarkRow,
+          PrefetchHooks Function()
+        > {
+  $$BrowserBookmarksTableTableManager(
+    _$AppDatabase db,
+    $BrowserBookmarksTable table,
+  ) : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$BrowserBookmarksTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$BrowserBookmarksTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$BrowserBookmarksTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback:
+              ({
+                Value<String> id = const Value.absent(),
+                Value<String> title = const Value.absent(),
+                Value<String> url = const Value.absent(),
+                Value<String?> faviconUrl = const Value.absent(),
+                Value<int> sortOrder = const Value.absent(),
+                Value<DateTime> createdAt = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => BrowserBookmarksCompanion(
+                id: id,
+                title: title,
+                url: url,
+                faviconUrl: faviconUrl,
+                sortOrder: sortOrder,
+                createdAt: createdAt,
+                rowid: rowid,
+              ),
+          createCompanionCallback:
+              ({
+                required String id,
+                required String title,
+                required String url,
+                Value<String?> faviconUrl = const Value.absent(),
+                Value<int> sortOrder = const Value.absent(),
+                required DateTime createdAt,
+                Value<int> rowid = const Value.absent(),
+              }) => BrowserBookmarksCompanion.insert(
+                id: id,
+                title: title,
+                url: url,
+                faviconUrl: faviconUrl,
+                sortOrder: sortOrder,
+                createdAt: createdAt,
+                rowid: rowid,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .toList(),
+          prefetchHooksCallback: null,
+        ),
+      );
+}
+
+typedef $$BrowserBookmarksTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $BrowserBookmarksTable,
+      BrowserBookmarkRow,
+      $$BrowserBookmarksTableFilterComposer,
+      $$BrowserBookmarksTableOrderingComposer,
+      $$BrowserBookmarksTableAnnotationComposer,
+      $$BrowserBookmarksTableCreateCompanionBuilder,
+      $$BrowserBookmarksTableUpdateCompanionBuilder,
+      (
+        BrowserBookmarkRow,
+        BaseReferences<
+          _$AppDatabase,
+          $BrowserBookmarksTable,
+          BrowserBookmarkRow
+        >,
+      ),
+      BrowserBookmarkRow,
+      PrefetchHooks Function()
+    >;
+typedef $$SystemMetricSamplesTableCreateCompanionBuilder =
+    SystemMetricSamplesCompanion Function({
+      required String id,
+      required DateTime capturedAt,
+      required int ramUsedMb,
+      required int ramTotalMb,
+      required double cpuPercent,
+      required int diskUsedMb,
+      required int diskTotalMb,
+      Value<double?> loadAvg1,
+      Value<String?> hostname,
+      Value<String?> platformLabel,
+      Value<int> rowid,
+    });
+typedef $$SystemMetricSamplesTableUpdateCompanionBuilder =
+    SystemMetricSamplesCompanion Function({
+      Value<String> id,
+      Value<DateTime> capturedAt,
+      Value<int> ramUsedMb,
+      Value<int> ramTotalMb,
+      Value<double> cpuPercent,
+      Value<int> diskUsedMb,
+      Value<int> diskTotalMb,
+      Value<double?> loadAvg1,
+      Value<String?> hostname,
+      Value<String?> platformLabel,
+      Value<int> rowid,
+    });
+
+class $$SystemMetricSamplesTableFilterComposer
+    extends Composer<_$AppDatabase, $SystemMetricSamplesTable> {
+  $$SystemMetricSamplesTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<String> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get capturedAt => $composableBuilder(
+    column: $table.capturedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get ramUsedMb => $composableBuilder(
+    column: $table.ramUsedMb,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get ramTotalMb => $composableBuilder(
+    column: $table.ramTotalMb,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<double> get cpuPercent => $composableBuilder(
+    column: $table.cpuPercent,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get diskUsedMb => $composableBuilder(
+    column: $table.diskUsedMb,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get diskTotalMb => $composableBuilder(
+    column: $table.diskTotalMb,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<double> get loadAvg1 => $composableBuilder(
+    column: $table.loadAvg1,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get hostname => $composableBuilder(
+    column: $table.hostname,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get platformLabel => $composableBuilder(
+    column: $table.platformLabel,
+    builder: (column) => ColumnFilters(column),
+  );
+}
+
+class $$SystemMetricSamplesTableOrderingComposer
+    extends Composer<_$AppDatabase, $SystemMetricSamplesTable> {
+  $$SystemMetricSamplesTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<String> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get capturedAt => $composableBuilder(
+    column: $table.capturedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get ramUsedMb => $composableBuilder(
+    column: $table.ramUsedMb,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get ramTotalMb => $composableBuilder(
+    column: $table.ramTotalMb,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<double> get cpuPercent => $composableBuilder(
+    column: $table.cpuPercent,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get diskUsedMb => $composableBuilder(
+    column: $table.diskUsedMb,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get diskTotalMb => $composableBuilder(
+    column: $table.diskTotalMb,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<double> get loadAvg1 => $composableBuilder(
+    column: $table.loadAvg1,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get hostname => $composableBuilder(
+    column: $table.hostname,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get platformLabel => $composableBuilder(
+    column: $table.platformLabel,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$SystemMetricSamplesTableAnnotationComposer
+    extends Composer<_$AppDatabase, $SystemMetricSamplesTable> {
+  $$SystemMetricSamplesTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<String> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get capturedAt => $composableBuilder(
+    column: $table.capturedAt,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get ramUsedMb =>
+      $composableBuilder(column: $table.ramUsedMb, builder: (column) => column);
+
+  GeneratedColumn<int> get ramTotalMb => $composableBuilder(
+    column: $table.ramTotalMb,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<double> get cpuPercent => $composableBuilder(
+    column: $table.cpuPercent,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get diskUsedMb => $composableBuilder(
+    column: $table.diskUsedMb,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get diskTotalMb => $composableBuilder(
+    column: $table.diskTotalMb,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<double> get loadAvg1 =>
+      $composableBuilder(column: $table.loadAvg1, builder: (column) => column);
+
+  GeneratedColumn<String> get hostname =>
+      $composableBuilder(column: $table.hostname, builder: (column) => column);
+
+  GeneratedColumn<String> get platformLabel => $composableBuilder(
+    column: $table.platformLabel,
+    builder: (column) => column,
+  );
+}
+
+class $$SystemMetricSamplesTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $SystemMetricSamplesTable,
+          SystemMetricSampleRow,
+          $$SystemMetricSamplesTableFilterComposer,
+          $$SystemMetricSamplesTableOrderingComposer,
+          $$SystemMetricSamplesTableAnnotationComposer,
+          $$SystemMetricSamplesTableCreateCompanionBuilder,
+          $$SystemMetricSamplesTableUpdateCompanionBuilder,
+          (
+            SystemMetricSampleRow,
+            BaseReferences<
+              _$AppDatabase,
+              $SystemMetricSamplesTable,
+              SystemMetricSampleRow
+            >,
+          ),
+          SystemMetricSampleRow,
+          PrefetchHooks Function()
+        > {
+  $$SystemMetricSamplesTableTableManager(
+    _$AppDatabase db,
+    $SystemMetricSamplesTable table,
+  ) : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$SystemMetricSamplesTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$SystemMetricSamplesTableOrderingComposer(
+                $db: db,
+                $table: table,
+              ),
+          createComputedFieldComposer: () =>
+              $$SystemMetricSamplesTableAnnotationComposer(
+                $db: db,
+                $table: table,
+              ),
+          updateCompanionCallback:
+              ({
+                Value<String> id = const Value.absent(),
+                Value<DateTime> capturedAt = const Value.absent(),
+                Value<int> ramUsedMb = const Value.absent(),
+                Value<int> ramTotalMb = const Value.absent(),
+                Value<double> cpuPercent = const Value.absent(),
+                Value<int> diskUsedMb = const Value.absent(),
+                Value<int> diskTotalMb = const Value.absent(),
+                Value<double?> loadAvg1 = const Value.absent(),
+                Value<String?> hostname = const Value.absent(),
+                Value<String?> platformLabel = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => SystemMetricSamplesCompanion(
+                id: id,
+                capturedAt: capturedAt,
+                ramUsedMb: ramUsedMb,
+                ramTotalMb: ramTotalMb,
+                cpuPercent: cpuPercent,
+                diskUsedMb: diskUsedMb,
+                diskTotalMb: diskTotalMb,
+                loadAvg1: loadAvg1,
+                hostname: hostname,
+                platformLabel: platformLabel,
+                rowid: rowid,
+              ),
+          createCompanionCallback:
+              ({
+                required String id,
+                required DateTime capturedAt,
+                required int ramUsedMb,
+                required int ramTotalMb,
+                required double cpuPercent,
+                required int diskUsedMb,
+                required int diskTotalMb,
+                Value<double?> loadAvg1 = const Value.absent(),
+                Value<String?> hostname = const Value.absent(),
+                Value<String?> platformLabel = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => SystemMetricSamplesCompanion.insert(
+                id: id,
+                capturedAt: capturedAt,
+                ramUsedMb: ramUsedMb,
+                ramTotalMb: ramTotalMb,
+                cpuPercent: cpuPercent,
+                diskUsedMb: diskUsedMb,
+                diskTotalMb: diskTotalMb,
+                loadAvg1: loadAvg1,
+                hostname: hostname,
+                platformLabel: platformLabel,
+                rowid: rowid,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .toList(),
+          prefetchHooksCallback: null,
+        ),
+      );
+}
+
+typedef $$SystemMetricSamplesTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $SystemMetricSamplesTable,
+      SystemMetricSampleRow,
+      $$SystemMetricSamplesTableFilterComposer,
+      $$SystemMetricSamplesTableOrderingComposer,
+      $$SystemMetricSamplesTableAnnotationComposer,
+      $$SystemMetricSamplesTableCreateCompanionBuilder,
+      $$SystemMetricSamplesTableUpdateCompanionBuilder,
+      (
+        SystemMetricSampleRow,
+        BaseReferences<
+          _$AppDatabase,
+          $SystemMetricSamplesTable,
+          SystemMetricSampleRow
+        >,
+      ),
+      SystemMetricSampleRow,
+      PrefetchHooks Function()
+    >;
+typedef $$FeatureUsageSessionsTableCreateCompanionBuilder =
+    FeatureUsageSessionsCompanion Function({
+      required String id,
+      required String featureKey,
+      required String featureLabel,
+      required DateTime startedAt,
+      required DateTime endedAt,
+      required int durationMs,
+      Value<double?> avgRamPercent,
+      Value<double?> avgCpuPercent,
+      Value<int> rowid,
+    });
+typedef $$FeatureUsageSessionsTableUpdateCompanionBuilder =
+    FeatureUsageSessionsCompanion Function({
+      Value<String> id,
+      Value<String> featureKey,
+      Value<String> featureLabel,
+      Value<DateTime> startedAt,
+      Value<DateTime> endedAt,
+      Value<int> durationMs,
+      Value<double?> avgRamPercent,
+      Value<double?> avgCpuPercent,
+      Value<int> rowid,
+    });
+
+class $$FeatureUsageSessionsTableFilterComposer
+    extends Composer<_$AppDatabase, $FeatureUsageSessionsTable> {
+  $$FeatureUsageSessionsTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<String> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get featureKey => $composableBuilder(
+    column: $table.featureKey,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get featureLabel => $composableBuilder(
+    column: $table.featureLabel,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get startedAt => $composableBuilder(
+    column: $table.startedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get endedAt => $composableBuilder(
+    column: $table.endedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get durationMs => $composableBuilder(
+    column: $table.durationMs,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<double> get avgRamPercent => $composableBuilder(
+    column: $table.avgRamPercent,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<double> get avgCpuPercent => $composableBuilder(
+    column: $table.avgCpuPercent,
+    builder: (column) => ColumnFilters(column),
+  );
+}
+
+class $$FeatureUsageSessionsTableOrderingComposer
+    extends Composer<_$AppDatabase, $FeatureUsageSessionsTable> {
+  $$FeatureUsageSessionsTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<String> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get featureKey => $composableBuilder(
+    column: $table.featureKey,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get featureLabel => $composableBuilder(
+    column: $table.featureLabel,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get startedAt => $composableBuilder(
+    column: $table.startedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get endedAt => $composableBuilder(
+    column: $table.endedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get durationMs => $composableBuilder(
+    column: $table.durationMs,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<double> get avgRamPercent => $composableBuilder(
+    column: $table.avgRamPercent,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<double> get avgCpuPercent => $composableBuilder(
+    column: $table.avgCpuPercent,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$FeatureUsageSessionsTableAnnotationComposer
+    extends Composer<_$AppDatabase, $FeatureUsageSessionsTable> {
+  $$FeatureUsageSessionsTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<String> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<String> get featureKey => $composableBuilder(
+    column: $table.featureKey,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get featureLabel => $composableBuilder(
+    column: $table.featureLabel,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<DateTime> get startedAt =>
+      $composableBuilder(column: $table.startedAt, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get endedAt =>
+      $composableBuilder(column: $table.endedAt, builder: (column) => column);
+
+  GeneratedColumn<int> get durationMs => $composableBuilder(
+    column: $table.durationMs,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<double> get avgRamPercent => $composableBuilder(
+    column: $table.avgRamPercent,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<double> get avgCpuPercent => $composableBuilder(
+    column: $table.avgCpuPercent,
+    builder: (column) => column,
+  );
+}
+
+class $$FeatureUsageSessionsTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $FeatureUsageSessionsTable,
+          FeatureUsageSessionRow,
+          $$FeatureUsageSessionsTableFilterComposer,
+          $$FeatureUsageSessionsTableOrderingComposer,
+          $$FeatureUsageSessionsTableAnnotationComposer,
+          $$FeatureUsageSessionsTableCreateCompanionBuilder,
+          $$FeatureUsageSessionsTableUpdateCompanionBuilder,
+          (
+            FeatureUsageSessionRow,
+            BaseReferences<
+              _$AppDatabase,
+              $FeatureUsageSessionsTable,
+              FeatureUsageSessionRow
+            >,
+          ),
+          FeatureUsageSessionRow,
+          PrefetchHooks Function()
+        > {
+  $$FeatureUsageSessionsTableTableManager(
+    _$AppDatabase db,
+    $FeatureUsageSessionsTable table,
+  ) : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$FeatureUsageSessionsTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$FeatureUsageSessionsTableOrderingComposer(
+                $db: db,
+                $table: table,
+              ),
+          createComputedFieldComposer: () =>
+              $$FeatureUsageSessionsTableAnnotationComposer(
+                $db: db,
+                $table: table,
+              ),
+          updateCompanionCallback:
+              ({
+                Value<String> id = const Value.absent(),
+                Value<String> featureKey = const Value.absent(),
+                Value<String> featureLabel = const Value.absent(),
+                Value<DateTime> startedAt = const Value.absent(),
+                Value<DateTime> endedAt = const Value.absent(),
+                Value<int> durationMs = const Value.absent(),
+                Value<double?> avgRamPercent = const Value.absent(),
+                Value<double?> avgCpuPercent = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => FeatureUsageSessionsCompanion(
+                id: id,
+                featureKey: featureKey,
+                featureLabel: featureLabel,
+                startedAt: startedAt,
+                endedAt: endedAt,
+                durationMs: durationMs,
+                avgRamPercent: avgRamPercent,
+                avgCpuPercent: avgCpuPercent,
+                rowid: rowid,
+              ),
+          createCompanionCallback:
+              ({
+                required String id,
+                required String featureKey,
+                required String featureLabel,
+                required DateTime startedAt,
+                required DateTime endedAt,
+                required int durationMs,
+                Value<double?> avgRamPercent = const Value.absent(),
+                Value<double?> avgCpuPercent = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => FeatureUsageSessionsCompanion.insert(
+                id: id,
+                featureKey: featureKey,
+                featureLabel: featureLabel,
+                startedAt: startedAt,
+                endedAt: endedAt,
+                durationMs: durationMs,
+                avgRamPercent: avgRamPercent,
+                avgCpuPercent: avgCpuPercent,
+                rowid: rowid,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .toList(),
+          prefetchHooksCallback: null,
+        ),
+      );
+}
+
+typedef $$FeatureUsageSessionsTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $FeatureUsageSessionsTable,
+      FeatureUsageSessionRow,
+      $$FeatureUsageSessionsTableFilterComposer,
+      $$FeatureUsageSessionsTableOrderingComposer,
+      $$FeatureUsageSessionsTableAnnotationComposer,
+      $$FeatureUsageSessionsTableCreateCompanionBuilder,
+      $$FeatureUsageSessionsTableUpdateCompanionBuilder,
+      (
+        FeatureUsageSessionRow,
+        BaseReferences<
+          _$AppDatabase,
+          $FeatureUsageSessionsTable,
+          FeatureUsageSessionRow
+        >,
+      ),
+      FeatureUsageSessionRow,
+      PrefetchHooks Function()
+    >;
 
 class $AppDatabaseManager {
   final _$AppDatabase _db;
@@ -27576,4 +30033,10 @@ class $AppDatabaseManager {
       $$SlackConversationsTableTableManager(_db, _db.slackConversations);
   $$SlackMessagesTableTableManager get slackMessages =>
       $$SlackMessagesTableTableManager(_db, _db.slackMessages);
+  $$BrowserBookmarksTableTableManager get browserBookmarks =>
+      $$BrowserBookmarksTableTableManager(_db, _db.browserBookmarks);
+  $$SystemMetricSamplesTableTableManager get systemMetricSamples =>
+      $$SystemMetricSamplesTableTableManager(_db, _db.systemMetricSamples);
+  $$FeatureUsageSessionsTableTableManager get featureUsageSessions =>
+      $$FeatureUsageSessionsTableTableManager(_db, _db.featureUsageSessions);
 }

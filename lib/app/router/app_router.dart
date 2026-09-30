@@ -3,7 +3,9 @@ import 'package:go_router/go_router.dart';
 import 'package:gizecare/app/router/app_routes.dart';
 import 'package:gizecare/app/router/root_navigator.dart';
 import 'package:gizecare/app/shell/app_shell.dart';
+import 'package:gizecare/core/browser/app_desktop_browser.dart';
 import 'package:gizecare/core/platform/app_platform.dart';
+import 'package:gizecare/features/browser/presentation/pages/browser_page.dart';
 import 'package:gizecare/features/calendar/presentation/pages/calendar_page.dart';
 import 'package:gizecare/features/clock/presentation/pages/clock_page.dart';
 import 'package:gizecare/features/dashboard/presentation/pages/dashboard_page.dart';
@@ -58,6 +60,23 @@ GoRouter createAppRouter({String? initialLocation}) {
       ShellRoute(
         builder: (context, state, child) => AppShell(child: child),
         routes: [
+          GoRoute(
+            path: AppRoutes.browser,
+            name: 'browser',
+            pageBuilder: (context, state) {
+              final url = state.uri.queryParameters['url'] ?? 'about:blank';
+              final title = state.uri.queryParameters['title'];
+              return NoTransitionPage<void>(
+                child: BrowserPage(
+                  initialUrl: url,
+                  title: title,
+                  sessionKey: url == 'about:blank'
+                      ? null
+                      : AppDesktopBrowser.sessionKeyForUrl(url),
+                ),
+              );
+            },
+          ),
           GoRoute(
             path: AppRoutes.dashboard,
             name: 'dashboard',
@@ -147,6 +166,44 @@ GoRouter createAppRouter({String? initialLocation}) {
             redirect: (_, __) => AppRoutes.gmail,
           ),
           GoRoute(
+            path: AppRoutes.apps,
+            name: 'apps',
+            redirect: (_, __) => AppRoutes.chatgpt,
+          ),
+          GoRoute(
+            path: AppRoutes.chatgpt,
+            name: 'chatgpt',
+            pageBuilder: (context, state) => const NoTransitionPage<void>(
+              child: BrowserPage(
+                initialUrl: AppRoutes.chatgptUrl,
+                title: 'ChatGPT',
+                sessionKey: 'app:chatgpt',
+              ),
+            ),
+          ),
+          GoRoute(
+            path: AppRoutes.gemini,
+            name: 'gemini',
+            pageBuilder: (context, state) => const NoTransitionPage<void>(
+              child: BrowserPage(
+                initialUrl: AppRoutes.geminiUrl,
+                title: 'Gemini',
+                sessionKey: 'app:gemini',
+              ),
+            ),
+          ),
+          GoRoute(
+            path: AppRoutes.youtube,
+            name: 'youtube',
+            pageBuilder: (context, state) => const NoTransitionPage<void>(
+              child: BrowserPage(
+                initialUrl: AppRoutes.youtubeUrl,
+                title: 'YouTube',
+                sessionKey: 'app:youtube',
+              ),
+            ),
+          ),
+          GoRoute(
             path: AppRoutes.gmail,
             name: 'gmail',
             pageBuilder: (context, state) => const NoTransitionPage<void>(
@@ -165,6 +222,17 @@ GoRouter createAppRouter({String? initialLocation}) {
             name: 'slack',
             pageBuilder: (context, state) => const NoTransitionPage<void>(
               child: SlackPage(),
+            ),
+          ),
+          GoRoute(
+            path: AppRoutes.whatsapp,
+            name: 'whatsapp',
+            pageBuilder: (context, state) => const NoTransitionPage<void>(
+              child: BrowserPage(
+                initialUrl: AppRoutes.whatsappUrl,
+                title: 'WhatsApp',
+                sessionKey: 'app:whatsapp',
+              ),
             ),
           ),
           GoRoute(

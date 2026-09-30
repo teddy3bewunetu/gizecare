@@ -8,6 +8,7 @@ import 'package:gizecare/core/database/sqlite_setup.dart';
 import 'package:gizecare/core/platform/app_platform.dart';
 import 'package:gizecare/core/services/app_logger.dart';
 import 'package:gizecare/core/services/desktop/linux_desktop_integration.dart';
+import 'package:media_kit/media_kit.dart';
 import 'package:pdfrx/pdfrx.dart';
 import 'package:window_manager/window_manager.dart';
 
@@ -17,6 +18,7 @@ import 'package:window_manager/window_manager.dart';
 /// Compact vs full geometry is applied after settings load in [_AppBootstrap].
 Future<void> bootstrap() async {
   WidgetsFlutterBinding.ensureInitialized();
+  MediaKit.ensureInitialized();
   // Linux/desktop uses native PDFium; WASM is web-only — silence debug noise.
   await pdfrxFlutterInitialize(dismissPdfiumWasmWarnings: true);
   await loadAppEnv();

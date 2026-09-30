@@ -44,6 +44,9 @@ part 'app_database.g.dart';
     SlackAccounts,
     SlackConversations,
     SlackMessages,
+    BrowserBookmarks,
+    SystemMetricSamples,
+    FeatureUsageSessions,
   ],
 )
 class AppDatabase extends _$AppDatabase {
@@ -53,7 +56,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.memory() : super(NativeDatabase.memory());
 
   @override
-  int get schemaVersion => 15;
+  int get schemaVersion => 19;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -214,6 +217,45 @@ class AppDatabase extends _$AppDatabase {
               "WHERE files_json IS NULL OR files_json = ''",
             );
           }
+          if (from < 16) {
+            await _createTableIfMissing(m, browserBookmarks);
+          }
+          if (from < 17) {
+            await _createTableIfMissing(m, systemMetricSamples);
+          }
+          if (from < 18) {
+            await _createTableIfMissing(m, featureUsageSessions);
+          }
+          if (from < 19) {
+            await _createTableIfMissing(m, featureUsageSessions);
+            await _addColumnIfMissing(
+              m,
+              featureUsageSessions,
+              featureUsageSessions.avgRamPercent,
+            );
+            await _addColumnIfMissing(
+              m,
+              featureUsageSessions,
+              featureUsageSessions.avgCpuPercent,
+            );
+          }
+        },
+        beforeOpen: (details) async {
+          // Hot-reload / partial upgrades can leave user_version ahead of DDL.
+          final m = Migrator(this);
+          await _createTableIfMissing(m, browserBookmarks);
+          await _createTableIfMissing(m, systemMetricSamples);
+          await _createTableIfMissing(m, featureUsageSessions);
+          await _addColumnIfMissing(
+            m,
+            featureUsageSessions,
+            featureUsageSessions.avgRamPercent,
+          );
+          await _addColumnIfMissing(
+            m,
+            featureUsageSessions,
+            featureUsageSessions.avgCpuPercent,
+          );
         },
       );
 

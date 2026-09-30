@@ -1,12 +1,12 @@
 /// Brand asset paths for ጊዜCare.
 abstract final class AppAssets {
-  /// Preferred in-app mark (vector — replace with your export anytime).
-  static const String logoSvg = 'assets/brand/gc-logo.png';
+  /// Preferred in-app mark (vector).
+  static const String logoSvg = 'assets/brand/gc-logo.svg';
 
   /// Full brand tile (cyan mark on black) — window / launcher icons.
   static const String logo = 'assets/brand/gc-logo.png';
 
-  /// Raster fallback for sidebar if SVG fails to load.
+  /// Raster mark for sidebar / places that prefer PNG.
   static const String logoMark = 'assets/brand/gc-logo-mark.png';
 
   /// Exact original artwork the user provided (reference / fallback).
