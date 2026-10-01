@@ -1,4 +1,7 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
+import 'package:path/path.dart' as p;
 
 import 'package:gizecare/core/widgets/app_snackbar.dart';
 import 'package:gizecare/features/documents/domain/document_format.dart';
@@ -13,31 +16,49 @@ Future<void> openDocumentViewer(
   required String filePath,
   ValueChanged<String>? onNavigateToFile,
   String? highlightQuery,
+  String? displayName,
 }) async {
-  final format = documentFormatForPath(filePath);
+  var path = filePath;
+  var format = await documentFormatForFile(path);
+  // TDLib often stores files without an extension — copy to a temp name so
+  // readers that key off the path suffix still work.
+  if (format == DocumentFormat.pdf && documentFormatForPath(path) == null) {
+    final base =
+        displayName != null && displayName.toLowerCase().endsWith('.pdf')
+            ? displayName
+            : '${p.basename(path)}.pdf';
+    final dest = p.join(
+      Directory.systemTemp.path,
+      'gizecare_tg_${DateTime.now().millisecondsSinceEpoch}_$base',
+    );
+    await File(path).copy(dest);
+    path = dest;
+    format = DocumentFormat.pdf;
+  }
+  if (!context.mounted) return;
   if (format == null) {
-    if (context.mounted) {
-      AppSnackBar.show(context, 'Unsupported file type');
-    }
+    AppSnackBar.show(context, 'Unsupported file type');
     return;
   }
 
   if (format == DocumentFormat.markdown) {
     await openMarkdownViewer(
       context,
-      filePath: filePath,
+      filePath: path,
       onNavigateToFile: onNavigateToFile,
       highlightQuery: highlightQuery,
     );
     return;
   }
 
+  if (!context.mounted) return;
   await showDialog<void>(
     context: context,
     barrierColor: Colors.black.withValues(alpha: 0.5),
     builder: (context) => _BinaryDocumentViewerDialog(
-      filePath: filePath,
-      format: format,
+      filePath: path,
+      format: format!,
+      titleOverride: displayName,
     ),
   );
 }
@@ -46,15 +67,19 @@ class _BinaryDocumentViewerDialog extends StatelessWidget {
   const _BinaryDocumentViewerDialog({
     required this.filePath,
     required this.format,
+    this.titleOverride,
   });
 
   final String filePath;
   final DocumentFormat format;
+  final String? titleOverride;
 
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    final fileName = displayNameFromPath(filePath, isFolder: false);
+    final fileName = (titleOverride != null && titleOverride!.trim().isNotEmpty)
+        ? titleOverride!.trim()
+        : displayNameFromPath(filePath, isFolder: false);
 
     return Dialog.fullscreen(
       backgroundColor: scheme.surface,

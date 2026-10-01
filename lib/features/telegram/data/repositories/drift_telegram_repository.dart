@@ -32,6 +32,11 @@ class DriftTelegramRepository implements TelegramRepository {
   final _pendingChats = <int, Completer<Map<String, dynamic>>>{};
   final _pendingHistory = <int, Completer<List<Map<String, dynamic>>>>{};
   final _pendingMe = <Completer<Map<String, dynamic>>>[];
+  final _incomingNotices =
+      StreamController<TelegramIncomingNotice>.broadcast();
+  String? _focusedChatId;
+  /// Serialize message writes so concurrent TDLib updates cannot double-insert.
+  Future<void> _messageWriteChain = Future<void>.value();
 
   @override
   Stream<TelegramAccount?> watchAccount() {
@@ -203,8 +208,8 @@ class DriftTelegramRepository implements TelegramRepository {
       if (live != null) return live;
       await _ensureAccountRow();
       _client.loadChats(limit: 200);
-      // Give TDLib time to emit chats, then refresh known chat ids.
-      await Future<void>.delayed(const Duration(milliseconds: 800));
+      // Brief pause so early updateNewChat events land before we stamp sync time.
+      await Future<void>.delayed(const Duration(milliseconds: 250));
       final account = (await getAccount()).requireValue;
       if (account == null) {
         return const Err(ValidationFailure('No Telegram account row'));
@@ -215,6 +220,8 @@ class DriftTelegramRepository implements TelegramRepository {
       await (_db.update(_db.telegramAccounts)
             ..where((t) => t.id.equals(account.id)))
           .write(TelegramAccountsCompanion(lastSyncAt: Value(DateTime.now())));
+      // Repair chat-list dates that history sync previously clobbered (oldest-wins).
+      await _recomputeAllChatLastMessageAts(account.id);
       return const Success(unit);
     } catch (e) {
       return Err(NetworkFailure('Failed to sync chats', cause: e));
@@ -259,21 +266,24 @@ class DriftTelegramRepository implements TelegramRepository {
       final all = await (_db.select(_db.telegramChats)
             ..where((t) => t.accountId.equals(account.id)))
           .get();
-      for (final chat in all) {
-        final allowed = telegramChatIds.contains(chat.telegramChatId);
-        await (_db.update(_db.telegramChats)
-              ..where((t) => t.id.equals(chat.id)))
-            .write(TelegramChatsCompanion(isAllowed: Value(allowed)));
-        if (!allowed) {
-          await (_db.delete(_db.telegramMessages)
-                ..where(
-                  (t) =>
-                      t.accountId.equals(account.id) &
-                      t.telegramChatId.equals(chat.telegramChatId),
-                ))
-              .go();
+      await _db.transaction(() async {
+        for (final chat in all) {
+          final allowed = telegramChatIds.contains(chat.telegramChatId);
+          if (chat.isAllowed == allowed) continue;
+          await (_db.update(_db.telegramChats)
+                ..where((t) => t.id.equals(chat.id)))
+              .write(TelegramChatsCompanion(isAllowed: Value(allowed)));
+          if (!allowed) {
+            await (_db.delete(_db.telegramMessages)
+                  ..where(
+                    (t) =>
+                        t.accountId.equals(account.id) &
+                        t.telegramChatId.equals(chat.telegramChatId),
+                  ))
+                .go();
+          }
         }
-      }
+      });
       return const Success(unit);
     } catch (e) {
       return Err(CacheFailure('Failed to update allowlist', cause: e));
@@ -310,6 +320,27 @@ class DriftTelegramRepository implements TelegramRepository {
       }
 
       final chatId = int.parse(telegramChatId);
+      // Refresh peer read cursor so outgoing ticks match Telegram Desktop.
+      try {
+        final tdChat = await _client.getChatResult(chatId);
+        if (tdChat['@type'] != 'error') {
+          final lastRead = tdChat['last_read_outbox_message_id'];
+          if (lastRead != null) {
+            await (_db.update(_db.telegramChats)
+                  ..where(
+                    (t) =>
+                        t.accountId.equals(account.id) &
+                        t.telegramChatId.equals(telegramChatId),
+                  ))
+                .write(
+              TelegramChatsCompanion(
+                lastReadOutboxMessageId: Value('$lastRead'),
+              ),
+            );
+          }
+        }
+      } catch (_) {}
+
       final completer = Completer<List<Map<String, dynamic>>>();
       _pendingHistory[chatId] = completer;
       _client.getChatHistory(chatId: chatId, limit: limit);
@@ -323,6 +354,7 @@ class DriftTelegramRepository implements TelegramRepository {
         await _upsertMessage(account.id, msg, now);
       }
       await _dedupeMessages(account.id, telegramChatId);
+      await _recomputeChatLastMessageAt(account.id, telegramChatId);
       return const Success(unit);
     } catch (e) {
       return Err(NetworkFailure('Failed to sync messages', cause: e));
@@ -333,7 +365,10 @@ class DriftTelegramRepository implements TelegramRepository {
   Stream<List<TelegramMessage>> watchMessages(String telegramChatId) {
     return (_db.select(_db.telegramMessages)
           ..where((t) => t.telegramChatId.equals(telegramChatId))
-          ..orderBy([(t) => OrderingTerm.asc(t.sentAt)]))
+          ..orderBy([
+            (t) => OrderingTerm.asc(t.sentAt),
+            (t) => OrderingTerm.asc(t.telegramMessageId),
+          ]))
         .watch()
         .map((rows) => rows.map(_mapMessage).toList());
   }
@@ -450,6 +485,106 @@ class DriftTelegramRepository implements TelegramRepository {
       return const Success(unit);
     } catch (e) {
       return Err(NetworkFailure('Failed to mark chat read', cause: e));
+    }
+  }
+
+  @override
+  Future<Result<String>> ensureMessageMedia(
+    String telegramChatId,
+    String telegramMessageId,
+  ) async {
+    try {
+      final guard = await _guardAllowedChat(telegramChatId);
+      if (guard != null) return Err(guard.requireFailure);
+      final account = (await getAccount()).requireValue;
+      if (account == null) {
+        return const Err(ValidationFailure('Connect Telegram first'));
+      }
+      final row = await (_db.select(_db.telegramMessages)
+            ..where(
+              (t) =>
+                  t.accountId.equals(account.id) &
+                  t.telegramChatId.equals(telegramChatId) &
+                  t.telegramMessageId.equals(telegramMessageId),
+            ))
+          .getSingleOrNull();
+      if (row == null) {
+        return const Err(ValidationFailure('Message not found'));
+      }
+      final existing = row.mediaPath;
+      if (existing != null &&
+          existing.startsWith('/') &&
+          File(existing).existsSync()) {
+        return Success(existing);
+      }
+      var fileId = row.mediaFileId;
+      // Older rows may lack mediaFileId — re-fetch the message from TDLib.
+      if (fileId == null) {
+        final tdMsg = await _client.getMessageResult(
+          chatId: int.parse(telegramChatId),
+          messageId: int.parse(telegramMessageId),
+        );
+        if (tdMsg['@type'] == 'error') {
+          return Err(
+            NetworkFailure(
+              (tdMsg['message'] as String?) ?? 'Could not load message',
+            ),
+          );
+        }
+        final parsed = _parseContent(tdMsg);
+        fileId = parsed?.fileId;
+        final local = parsed?.localPath;
+        if (local != null &&
+            local.startsWith('/') &&
+            File(local).existsSync()) {
+          await (_db.update(_db.telegramMessages)
+                ..where((t) => t.id.equals(row.id)))
+              .write(
+            TelegramMessagesCompanion(
+              mediaPath: Value(local),
+              mediaFileId: fileId != null ? Value(fileId) : const Value.absent(),
+              contentType: parsed != null
+                  ? Value(parsed.contentType)
+                  : const Value.absent(),
+              body: parsed != null ? Value(parsed.text) : const Value.absent(),
+            ),
+          );
+          return Success(local);
+        }
+        if (fileId != null) {
+          await (_db.update(_db.telegramMessages)
+                ..where((t) => t.id.equals(row.id)))
+              .write(
+            TelegramMessagesCompanion(
+              mediaFileId: Value(fileId),
+              contentType: parsed != null
+                  ? Value(parsed.contentType)
+                  : const Value.absent(),
+              body: parsed != null ? Value(parsed.text) : const Value.absent(),
+            ),
+          );
+        }
+      }
+      if (fileId == null) {
+        return const Err(
+          ValidationFailure('No downloadable file on this message'),
+        );
+      }
+      final path = await _client.downloadFilePath(fileId);
+      if (path == null || path.isEmpty) {
+        return const Err(NetworkFailure('Could not download file'));
+      }
+      await (_db.update(_db.telegramMessages)
+            ..where((t) => t.id.equals(row.id)))
+          .write(
+        TelegramMessagesCompanion(
+          mediaPath: Value(path),
+          mediaFileId: Value(fileId),
+        ),
+      );
+      return Success(path);
+    } catch (e) {
+      return Err(NetworkFailure('Failed to download file', cause: e));
     }
   }
 
@@ -935,6 +1070,15 @@ class DriftTelegramRepository implements TelegramRepository {
     }
   }
 
+  @override
+  void setFocusedChatId(String? telegramChatId) {
+    _focusedChatId = telegramChatId;
+  }
+
+  @override
+  Stream<TelegramIncomingNotice> watchIncomingNotices() =>
+      _incomingNotices.stream;
+
   String _formatUserStatus(Map<String, dynamic>? status) {
     if (status == null) return 'last seen recently';
     final type = status['@type'] as String?;
@@ -1080,14 +1224,22 @@ class DriftTelegramRepository implements TelegramRepository {
           .whereType<Map>()
           .map((e) => Map<String, dynamic>.from(e))
           .toList();
-      if (chatId is int && _pendingHistory.containsKey(chatId)) {
+      // If syncMessages() is waiting, let that path upsert once (avoids races).
+      final hadPending =
+          chatId is int && _pendingHistory.containsKey(chatId);
+      if (hadPending) {
         _pendingHistory.remove(chatId)?.complete(list);
+        return;
       }
       final account = (await getAccount()).requireValue;
       if (account != null) {
         final now = DateTime.now();
         for (final msg in list) {
           await _upsertMessage(account.id, msg, now);
+        }
+        if (chatId is int) {
+          await _recomputeChatLastMessageAt(account.id, '$chatId');
+          await _dedupeMessages(account.id, '$chatId');
         }
       }
       return;
@@ -1109,6 +1261,89 @@ class DriftTelegramRepository implements TelegramRepository {
           .getSingleOrNull();
       if (allowed == null) return;
       await _upsertMessage(account.id, message, DateTime.now());
+      await _dedupeMessages(account.id, chatId);
+
+      final isOutgoing = message['is_outgoing'] as bool? ?? false;
+      if (isOutgoing) return;
+
+      // Viewing this chat: keep unread cleared and ask TDLib to mark read.
+      if (_focusedChatId == chatId) {
+        if (allowed.unreadCount != 0) {
+          await (_db.update(_db.telegramChats)
+                ..where((t) => t.id.equals(allowed.id)))
+              .write(const TelegramChatsCompanion(unreadCount: Value(0)));
+        }
+        unawaited(markChatRead(chatId));
+        return;
+      }
+
+      // Immediate badge bump (don't wait for updateChatReadInbox).
+      await (_db.update(_db.telegramChats)
+            ..where((t) => t.id.equals(allowed.id)))
+          .write(
+        TelegramChatsCompanion(
+          unreadCount: Value(allowed.unreadCount + 1),
+          updatedAt: Value(DateTime.now()),
+        ),
+      );
+
+      final parsed = _parseContent(message);
+      var preview = (parsed?.text ?? '').trim();
+      if (preview.isEmpty) {
+        preview = switch (parsed?.contentType) {
+          'photo' => 'Photo',
+          'voice' => 'Voice message',
+          'video' => 'Video',
+          'document' => 'File',
+          'sticker' => 'Sticker',
+          _ => 'New message',
+        };
+      }
+      if (preview.length > 120) {
+        preview = '${preview.substring(0, 117)}…';
+      }
+      if (!_incomingNotices.isClosed) {
+        final sender = message['sender_id'] as Map<String, dynamic>?;
+        String? senderName = message['author_signature'] as String?;
+        if ((senderName == null || senderName.isEmpty) &&
+            (allowed.chatType == 'group' || allowed.chatType == 'channel')) {
+          final uid = sender?['user_id'];
+          if (uid != null) {
+            // Prefer a name already cached on a prior message from this chat.
+            final prior = await (_db.select(_db.telegramMessages)
+                  ..where(
+                    (t) =>
+                        t.accountId.equals(account.id) &
+                        t.telegramChatId.equals(chatId) &
+                        t.isOutgoing.equals(false),
+                  )
+                  ..orderBy([(t) => OrderingTerm.desc(t.sentAt)])
+                  ..limit(12))
+                .get();
+            for (final row in prior) {
+              final name = row.senderName?.trim();
+              if (name != null && name.isNotEmpty) {
+                senderName = name;
+                break;
+              }
+            }
+            senderName ??= 'Member';
+          }
+        }
+        final photo = allowed.photoPath;
+        _incomingNotices.add(
+          TelegramIncomingNotice(
+            chatId: chatId,
+            chatTitle: allowed.title,
+            preview: preview,
+            receivedAt: DateTime.now(),
+            photoPath: photo != null && photo.startsWith('/') ? photo : null,
+            senderName: senderName,
+            chatType: telegramChatTypeFromString(allowed.chatType),
+            contentType: parsed?.contentType ?? 'text',
+          ),
+        );
+      }
       return;
     }
 
@@ -1137,6 +1372,16 @@ class DriftTelegramRepository implements TelegramRepository {
             .go();
       }
       await _upsertMessage(account.id, message, DateTime.now());
+      // Pending local echo + server message often differ by id / 1s clock.
+      await _removeOutgoingEchoes(
+        account.id,
+        chatId,
+        keepTelegramMessageId: '${message['id']}',
+        body: _parseContent(message)?.text ?? '',
+        sentAt: DateTime.fromMillisecondsSinceEpoch(
+          ((message['date'] as int?) ?? 0) * 1000,
+        ),
+      );
       await _dedupeMessages(account.id, chatId);
       return;
     }
@@ -1174,6 +1419,48 @@ class DriftTelegramRepository implements TelegramRepository {
       return;
     }
 
+    if (type == 'updateChatReadOutbox') {
+      final chatId = '${update['chat_id']}';
+      final lastRead = update['last_read_outbox_message_id'];
+      if (lastRead == null) return;
+      final account = (await getAccount()).requireValue;
+      if (account == null) return;
+      await (_db.update(_db.telegramChats)
+            ..where(
+              (t) =>
+                  t.accountId.equals(account.id) &
+                  t.telegramChatId.equals(chatId),
+            ))
+          .write(
+        TelegramChatsCompanion(
+          lastReadOutboxMessageId: Value('$lastRead'),
+        ),
+      );
+      return;
+    }
+
+    if (type == 'updateChatLastMessage') {
+      final chatId = '${update['chat_id']}';
+      final lastMessage = update['last_message'] as Map<String, dynamic>?;
+      final account = (await getAccount()).requireValue;
+      if (account == null) return;
+      if (lastMessage != null) {
+        // Upsert when the chat is allowed; always bump preview time if newer.
+        await _upsertMessage(account.id, lastMessage, DateTime.now());
+        final dateSec = lastMessage['date'] as int?;
+        if (dateSec != null) {
+          await _updateChatLastMessageAtIfNewer(
+            account.id,
+            chatId,
+            DateTime.fromMillisecondsSinceEpoch(dateSec * 1000),
+          );
+        }
+      } else {
+        await _recomputeChatLastMessageAt(account.id, chatId);
+      }
+      return;
+    }
+
     if (type == 'updateDeleteMessages') {
       final chatId = '${update['chat_id']}';
       final ids = (update['message_ids'] as List<dynamic>? ?? const [])
@@ -1190,6 +1477,7 @@ class DriftTelegramRepository implements TelegramRepository {
                   t.telegramMessageId.isIn(ids),
             ))
           .go();
+      await _recomputeChatLastMessageAt(account.id, chatId);
       return;
     }
 
@@ -1228,26 +1516,77 @@ class DriftTelegramRepository implements TelegramRepository {
         .get();
     if (rows.length < 2) return;
 
-    final bestByKey = <String, TelegramMessageRow>{};
     final dropIds = <String>{};
 
+    // 1) Exact telegram message id collisions (race inserts).
+    final byTgId = <String, TelegramMessageRow>{};
     for (final row in rows) {
-      final key =
-          '${row.body}|${row.sentAt.millisecondsSinceEpoch}|${row.isOutgoing}|${row.contentType}';
-      final existing = bestByKey[key];
+      final existing = byTgId[row.telegramMessageId];
       if (existing == null) {
-        bestByKey[key] = row;
+        byTgId[row.telegramMessageId] = row;
         continue;
       }
       final keep = _preferMessageRow(existing, row);
       final drop = keep.id == existing.id ? row : existing;
-      bestByKey[key] = keep;
+      byTgId[row.telegramMessageId] = keep;
       dropIds.add(drop.id);
+    }
+
+    // 2) Same body / direction within a few seconds (pending echo vs server).
+    final survivors =
+        rows.where((r) => !dropIds.contains(r.id)).toList(growable: false);
+    for (var i = 0; i < survivors.length; i++) {
+      final a = survivors[i];
+      if (dropIds.contains(a.id)) continue;
+      for (var j = i + 1; j < survivors.length; j++) {
+        final b = survivors[j];
+        if (dropIds.contains(b.id)) continue;
+        if (a.isOutgoing != b.isOutgoing) continue;
+        if (a.contentType != b.contentType) continue;
+        if (a.body.trim() != b.body.trim()) continue;
+        final delta =
+            a.sentAt.difference(b.sentAt).inSeconds.abs();
+        if (delta > 3) continue;
+        final keep = _preferMessageRow(a, b);
+        final drop = keep.id == a.id ? b : a;
+        dropIds.add(drop.id);
+      }
     }
 
     for (final id in dropIds) {
       await (_db.delete(_db.telegramMessages)..where((t) => t.id.equals(id)))
           .go();
+    }
+  }
+
+  /// Drop other outgoing copies of a just-confirmed server message.
+  Future<void> _removeOutgoingEchoes(
+    String accountId,
+    String telegramChatId, {
+    required String keepTelegramMessageId,
+    required String body,
+    required DateTime sentAt,
+  }) async {
+    final trimmed = body.trim();
+    if (trimmed.isEmpty) return;
+    final rows = await (_db.select(_db.telegramMessages)
+          ..where(
+            (t) =>
+                t.accountId.equals(accountId) &
+                t.telegramChatId.equals(telegramChatId) &
+                t.isOutgoing.equals(true),
+          ))
+        .get();
+    for (final row in rows) {
+      if (row.telegramMessageId == keepTelegramMessageId) continue;
+      if (row.body.trim() != trimmed) continue;
+      final delta = row.sentAt.difference(sentAt).inSeconds.abs();
+      final pendingId = int.tryParse(row.telegramMessageId) ?? 0;
+      final looksPending = pendingId > 1000000000000;
+      if (delta <= 5 || looksPending) {
+        await (_db.delete(_db.telegramMessages)..where((t) => t.id.equals(row.id)))
+            .go();
+      }
     }
   }
 
@@ -1265,6 +1604,8 @@ class DriftTelegramRepository implements TelegramRepository {
     final bMedia = b.mediaPath?.startsWith('/') ?? false;
     if (aMedia && !bMedia) return a;
     if (bMedia && !aMedia) return b;
+    // Prefer the numerically larger (newer) Telegram id when both are real.
+    if (aId != bId) return aId > bId ? a : b;
     return a.updatedAt.isAfter(b.updatedAt) ? a : b;
   }
 
@@ -1319,6 +1660,11 @@ class DriftTelegramRepository implements TelegramRepository {
         .getSingleOrNull();
     final now = DateTime.now();
     final unread = chat['unread_count'] as int? ?? existing?.unreadCount ?? 0;
+    final lastReadOutbox = chat['last_read_outbox_message_id'];
+    final lastReadOutboxId = lastReadOutbox != null
+        ? '$lastReadOutbox'
+        : existing?.lastReadOutboxMessageId;
+    final lastMessageAt = _lastMessageAtFromChat(chat);
     final photoFileId = _chatPhotoFileId(chat);
     String? photoPath = existing?.photoPath;
     if (photoFileId != null) {
@@ -1331,6 +1677,13 @@ class DriftTelegramRepository implements TelegramRepository {
       }
     }
 
+    // Prefer the newest of TDLib last_message vs what we already stored.
+    DateTime? resolvedLastAt = existing?.lastMessageAt;
+    if (lastMessageAt != null &&
+        (resolvedLastAt == null || lastMessageAt.isAfter(resolvedLastAt))) {
+      resolvedLastAt = lastMessageAt;
+    }
+
     if (existing == null) {
       await _db.into(_db.telegramChats).insert(
             TelegramChatsCompanion.insert(
@@ -1341,6 +1694,8 @@ class DriftTelegramRepository implements TelegramRepository {
               chatType: telegramChatTypeToString(type),
               photoPath: Value(photoPath),
               unreadCount: Value(unread),
+              lastReadOutboxMessageId: Value(lastReadOutboxId),
+              lastMessageAt: Value(resolvedLastAt),
               updatedAt: now,
             ),
           );
@@ -1355,10 +1710,24 @@ class DriftTelegramRepository implements TelegramRepository {
               ? Value(photoPath)
               : const Value.absent(),
           unreadCount: Value(unread),
+          lastReadOutboxMessageId: lastReadOutboxId != null
+              ? Value(lastReadOutboxId)
+              : const Value.absent(),
+          lastMessageAt: resolvedLastAt != null
+              ? Value(resolvedLastAt)
+              : const Value.absent(),
           updatedAt: Value(now),
         ),
       );
     }
+  }
+
+  DateTime? _lastMessageAtFromChat(Map<String, dynamic> chat) {
+    final last = chat['last_message'] as Map<String, dynamic>?;
+    if (last == null) return null;
+    final dateSec = last['date'] as int?;
+    if (dateSec == null || dateSec <= 0) return null;
+    return DateTime.fromMillisecondsSinceEpoch(dateSec * 1000);
   }
 
   int? _chatPhotoFileId(Map<String, dynamic> chat) {
@@ -1384,6 +1753,23 @@ class DriftTelegramRepository implements TelegramRepository {
   }
 
   Future<void> _upsertMessage(
+    String accountId,
+    Map<String, dynamic> msg,
+    DateTime now,
+  ) {
+    final gate = Completer<void>();
+    final previous = _messageWriteChain;
+    _messageWriteChain = previous.whenComplete(() => gate.future);
+    return previous.then((_) async {
+      try {
+        await _upsertMessageUnlocked(accountId, msg, now);
+      } finally {
+        gate.complete();
+      }
+    });
+  }
+
+  Future<void> _upsertMessageUnlocked(
     String accountId,
     Map<String, dynamic> msg,
     DateTime now,
@@ -1426,24 +1812,84 @@ class DriftTelegramRepository implements TelegramRepository {
     final isEdited = editDate > 0 || (existing?.isEdited ?? false);
 
     if (existing == null) {
-      await _db.into(_db.telegramMessages).insert(
-            TelegramMessagesCompanion.insert(
-              id: _uuid.v4(),
-              accountId: accountId,
-              telegramChatId: chatId,
-              telegramMessageId: messageId,
-              body: parsed.text,
-              contentType: Value(parsed.contentType),
-              mediaPath: Value(mediaPath),
-              mediaFileId: Value(parsed.fileId),
-              replyToMessageId: Value(reply?.messageId),
-              replyPreview: Value(reply?.preview),
-              sentAt: sentAt,
-              isOutgoing: Value(isOutgoing),
-              isEdited: Value(isEdited),
-              updatedAt: now,
-            ),
-          );
+      // Re-check inside the serialized chain in case a twin insert landed.
+      final raced = await (_db.select(_db.telegramMessages)
+            ..where(
+              (t) =>
+                  t.accountId.equals(accountId) &
+                  t.telegramChatId.equals(chatId) &
+                  t.telegramMessageId.equals(messageId),
+            ))
+          .getSingleOrNull();
+      if (raced != null) {
+        await (_db.update(_db.telegramMessages)
+              ..where((t) => t.id.equals(raced.id)))
+            .write(
+          TelegramMessagesCompanion(
+            body: Value(parsed.text),
+            contentType: Value(parsed.contentType),
+            mediaPath: mediaPath != null
+                ? Value(mediaPath)
+                : const Value.absent(),
+            mediaFileId: parsed.fileId != null
+                ? Value(parsed.fileId)
+                : const Value.absent(),
+            replyToMessageId: reply?.messageId != null
+                ? Value(reply!.messageId)
+                : const Value.absent(),
+            replyPreview: reply?.preview != null
+                ? Value(reply!.preview)
+                : const Value.absent(),
+            isEdited: Value(isEdited),
+            updatedAt: Value(now),
+          ),
+        );
+      } else {
+        try {
+          await _db.into(_db.telegramMessages).insert(
+                TelegramMessagesCompanion.insert(
+                  id: _uuid.v4(),
+                  accountId: accountId,
+                  telegramChatId: chatId,
+                  telegramMessageId: messageId,
+                  body: parsed.text,
+                  contentType: Value(parsed.contentType),
+                  mediaPath: Value(mediaPath),
+                  mediaFileId: Value(parsed.fileId),
+                  replyToMessageId: Value(reply?.messageId),
+                  replyPreview: Value(reply?.preview),
+                  sentAt: sentAt,
+                  isOutgoing: Value(isOutgoing),
+                  isEdited: Value(isEdited),
+                  updatedAt: now,
+                ),
+              );
+        } catch (_) {
+          // Unique index hit from a concurrent writer — fall back to update.
+          final raced = await (_db.select(_db.telegramMessages)
+                ..where(
+                  (t) =>
+                      t.accountId.equals(accountId) &
+                      t.telegramChatId.equals(chatId) &
+                      t.telegramMessageId.equals(messageId),
+                ))
+              .getSingleOrNull();
+          if (raced != null) {
+            await (_db.update(_db.telegramMessages)
+                  ..where((t) => t.id.equals(raced.id)))
+                .write(
+              TelegramMessagesCompanion(
+                body: Value(parsed.text),
+                contentType: Value(parsed.contentType),
+                mediaPath: mediaPath != null
+                    ? Value(mediaPath)
+                    : const Value.absent(),
+                updatedAt: Value(now),
+              ),
+            );
+          }
+        }
+      }
     } else {
       await (_db.update(_db.telegramMessages)
             ..where((t) => t.id.equals(existing.id)))
@@ -1469,13 +1915,70 @@ class DriftTelegramRepository implements TelegramRepository {
       );
     }
 
+    await _updateChatLastMessageAtIfNewer(accountId, chatId, sentAt);
+  }
+
+  /// Only move the chat-list preview time forward (never backward).
+  Future<void> _updateChatLastMessageAtIfNewer(
+    String accountId,
+    String telegramChatId,
+    DateTime sentAt,
+  ) async {
+    final chat = await (_db.select(_db.telegramChats)
+          ..where(
+            (t) =>
+                t.accountId.equals(accountId) &
+                t.telegramChatId.equals(telegramChatId),
+          ))
+        .getSingleOrNull();
+    if (chat == null) return;
+    final current = chat.lastMessageAt;
+    if (current != null && !sentAt.isAfter(current)) return;
+    await (_db.update(_db.telegramChats)..where((t) => t.id.equals(chat.id)))
+        .write(
+      TelegramChatsCompanion(
+        lastMessageAt: Value(sentAt),
+        updatedAt: Value(DateTime.now()),
+      ),
+    );
+  }
+
+  /// Repair stale list dates from the newest stored message row.
+  Future<void> _recomputeChatLastMessageAt(
+    String accountId,
+    String telegramChatId,
+  ) async {
+    final newest = await (_db.select(_db.telegramMessages)
+          ..where(
+            (t) =>
+                t.accountId.equals(accountId) &
+                t.telegramChatId.equals(telegramChatId),
+          )
+          ..orderBy([(t) => OrderingTerm.desc(t.sentAt)])
+          ..limit(1))
+        .getSingleOrNull();
+    if (newest == null) return;
     await (_db.update(_db.telegramChats)
           ..where(
             (t) =>
                 t.accountId.equals(accountId) &
-                t.telegramChatId.equals(chatId),
+                t.telegramChatId.equals(telegramChatId),
           ))
-        .write(TelegramChatsCompanion(lastMessageAt: Value(sentAt)));
+        .write(
+      TelegramChatsCompanion(
+        lastMessageAt: Value(newest.sentAt),
+        updatedAt: Value(DateTime.now()),
+      ),
+    );
+  }
+
+  Future<void> _recomputeAllChatLastMessageAts(String accountId) async {
+    final chats = await (_db.select(_db.telegramChats)
+          ..where((t) => t.accountId.equals(accountId)))
+        .get();
+    for (final chat in chats) {
+      await _recomputeChatLastMessageAt(accountId, chat.telegramChatId);
+    }
   }
 
   ({String messageId, String preview})? _parseReply(Map<String, dynamic> msg) {
@@ -1565,7 +2068,7 @@ class DriftTelegramRepository implements TelegramRepository {
       final file = doc?['document'] as Map<String, dynamic>?;
       final caption = captionOf();
       return _ParsedContent(
-        text: caption.isEmpty ? name : caption,
+        text: caption.isEmpty ? name : '$name|$caption',
         contentType: 'document',
         fileId: file?['id'] as int?,
         localPath: localFrom(file),
@@ -1651,6 +2154,7 @@ class DriftTelegramRepository implements TelegramRepository {
       username: row.username,
       lastMessageAt: row.lastMessageAt,
       unreadCount: row.unreadCount,
+      lastReadOutboxMessageId: row.lastReadOutboxMessageId,
       photoPath: path != null && path.startsWith('/') ? path : null,
     );
   }
@@ -1666,6 +2170,7 @@ class DriftTelegramRepository implements TelegramRepository {
       senderName: row.senderName,
       contentType: row.contentType,
       mediaPath: row.mediaPath,
+      mediaFileId: row.mediaFileId,
       replyToMessageId: row.replyToMessageId,
       replyPreview: row.replyPreview,
       isEdited: row.isEdited,

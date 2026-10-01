@@ -9437,6 +9437,17 @@ class $TelegramChatsTable extends TelegramChats
     requiredDuringInsert: false,
     defaultValue: const Constant(0),
   );
+  static const VerificationMeta _lastReadOutboxMessageIdMeta =
+      const VerificationMeta('lastReadOutboxMessageId');
+  @override
+  late final GeneratedColumn<String> lastReadOutboxMessageId =
+      GeneratedColumn<String>(
+        'last_read_outbox_message_id',
+        aliasedName,
+        true,
+        type: DriftSqlType.string,
+        requiredDuringInsert: false,
+      );
   static const VerificationMeta _photoPathMeta = const VerificationMeta(
     'photoPath',
   );
@@ -9470,6 +9481,7 @@ class $TelegramChatsTable extends TelegramChats
     isAllowed,
     lastMessageAt,
     unreadCount,
+    lastReadOutboxMessageId,
     photoPath,
     updatedAt,
   ];
@@ -9555,6 +9567,15 @@ class $TelegramChatsTable extends TelegramChats
         ),
       );
     }
+    if (data.containsKey('last_read_outbox_message_id')) {
+      context.handle(
+        _lastReadOutboxMessageIdMeta,
+        lastReadOutboxMessageId.isAcceptableOrUnknown(
+          data['last_read_outbox_message_id']!,
+          _lastReadOutboxMessageIdMeta,
+        ),
+      );
+    }
     if (data.containsKey('photo_path')) {
       context.handle(
         _photoPathMeta,
@@ -9614,6 +9635,10 @@ class $TelegramChatsTable extends TelegramChats
         DriftSqlType.int,
         data['${effectivePrefix}unread_count'],
       )!,
+      lastReadOutboxMessageId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}last_read_outbox_message_id'],
+      ),
       photoPath: attachedDatabase.typeMapping.read(
         DriftSqlType.string,
         data['${effectivePrefix}photo_path'],
@@ -9646,6 +9671,9 @@ class TelegramChatRow extends DataClass implements Insertable<TelegramChatRow> {
   final DateTime? lastMessageAt;
   final int unreadCount;
 
+  /// Highest outgoing message id the peer has read (TDLib last_read_outbox).
+  final String? lastReadOutboxMessageId;
+
   /// Local path to downloaded chat avatar (small).
   final String? photoPath;
   final DateTime updatedAt;
@@ -9659,6 +9687,7 @@ class TelegramChatRow extends DataClass implements Insertable<TelegramChatRow> {
     required this.isAllowed,
     this.lastMessageAt,
     required this.unreadCount,
+    this.lastReadOutboxMessageId,
     this.photoPath,
     required this.updatedAt,
   });
@@ -9678,6 +9707,11 @@ class TelegramChatRow extends DataClass implements Insertable<TelegramChatRow> {
       map['last_message_at'] = Variable<DateTime>(lastMessageAt);
     }
     map['unread_count'] = Variable<int>(unreadCount);
+    if (!nullToAbsent || lastReadOutboxMessageId != null) {
+      map['last_read_outbox_message_id'] = Variable<String>(
+        lastReadOutboxMessageId,
+      );
+    }
     if (!nullToAbsent || photoPath != null) {
       map['photo_path'] = Variable<String>(photoPath);
     }
@@ -9700,6 +9734,9 @@ class TelegramChatRow extends DataClass implements Insertable<TelegramChatRow> {
           ? const Value.absent()
           : Value(lastMessageAt),
       unreadCount: Value(unreadCount),
+      lastReadOutboxMessageId: lastReadOutboxMessageId == null && nullToAbsent
+          ? const Value.absent()
+          : Value(lastReadOutboxMessageId),
       photoPath: photoPath == null && nullToAbsent
           ? const Value.absent()
           : Value(photoPath),
@@ -9722,6 +9759,9 @@ class TelegramChatRow extends DataClass implements Insertable<TelegramChatRow> {
       isAllowed: serializer.fromJson<bool>(json['isAllowed']),
       lastMessageAt: serializer.fromJson<DateTime?>(json['lastMessageAt']),
       unreadCount: serializer.fromJson<int>(json['unreadCount']),
+      lastReadOutboxMessageId: serializer.fromJson<String?>(
+        json['lastReadOutboxMessageId'],
+      ),
       photoPath: serializer.fromJson<String?>(json['photoPath']),
       updatedAt: serializer.fromJson<DateTime>(json['updatedAt']),
     );
@@ -9739,6 +9779,9 @@ class TelegramChatRow extends DataClass implements Insertable<TelegramChatRow> {
       'isAllowed': serializer.toJson<bool>(isAllowed),
       'lastMessageAt': serializer.toJson<DateTime?>(lastMessageAt),
       'unreadCount': serializer.toJson<int>(unreadCount),
+      'lastReadOutboxMessageId': serializer.toJson<String?>(
+        lastReadOutboxMessageId,
+      ),
       'photoPath': serializer.toJson<String?>(photoPath),
       'updatedAt': serializer.toJson<DateTime>(updatedAt),
     };
@@ -9754,6 +9797,7 @@ class TelegramChatRow extends DataClass implements Insertable<TelegramChatRow> {
     bool? isAllowed,
     Value<DateTime?> lastMessageAt = const Value.absent(),
     int? unreadCount,
+    Value<String?> lastReadOutboxMessageId = const Value.absent(),
     Value<String?> photoPath = const Value.absent(),
     DateTime? updatedAt,
   }) => TelegramChatRow(
@@ -9768,6 +9812,9 @@ class TelegramChatRow extends DataClass implements Insertable<TelegramChatRow> {
         ? lastMessageAt.value
         : this.lastMessageAt,
     unreadCount: unreadCount ?? this.unreadCount,
+    lastReadOutboxMessageId: lastReadOutboxMessageId.present
+        ? lastReadOutboxMessageId.value
+        : this.lastReadOutboxMessageId,
     photoPath: photoPath.present ? photoPath.value : this.photoPath,
     updatedAt: updatedAt ?? this.updatedAt,
   );
@@ -9788,6 +9835,9 @@ class TelegramChatRow extends DataClass implements Insertable<TelegramChatRow> {
       unreadCount: data.unreadCount.present
           ? data.unreadCount.value
           : this.unreadCount,
+      lastReadOutboxMessageId: data.lastReadOutboxMessageId.present
+          ? data.lastReadOutboxMessageId.value
+          : this.lastReadOutboxMessageId,
       photoPath: data.photoPath.present ? data.photoPath.value : this.photoPath,
       updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
     );
@@ -9805,6 +9855,7 @@ class TelegramChatRow extends DataClass implements Insertable<TelegramChatRow> {
           ..write('isAllowed: $isAllowed, ')
           ..write('lastMessageAt: $lastMessageAt, ')
           ..write('unreadCount: $unreadCount, ')
+          ..write('lastReadOutboxMessageId: $lastReadOutboxMessageId, ')
           ..write('photoPath: $photoPath, ')
           ..write('updatedAt: $updatedAt')
           ..write(')'))
@@ -9822,6 +9873,7 @@ class TelegramChatRow extends DataClass implements Insertable<TelegramChatRow> {
     isAllowed,
     lastMessageAt,
     unreadCount,
+    lastReadOutboxMessageId,
     photoPath,
     updatedAt,
   );
@@ -9838,6 +9890,7 @@ class TelegramChatRow extends DataClass implements Insertable<TelegramChatRow> {
           other.isAllowed == this.isAllowed &&
           other.lastMessageAt == this.lastMessageAt &&
           other.unreadCount == this.unreadCount &&
+          other.lastReadOutboxMessageId == this.lastReadOutboxMessageId &&
           other.photoPath == this.photoPath &&
           other.updatedAt == this.updatedAt);
 }
@@ -9852,6 +9905,7 @@ class TelegramChatsCompanion extends UpdateCompanion<TelegramChatRow> {
   final Value<bool> isAllowed;
   final Value<DateTime?> lastMessageAt;
   final Value<int> unreadCount;
+  final Value<String?> lastReadOutboxMessageId;
   final Value<String?> photoPath;
   final Value<DateTime> updatedAt;
   final Value<int> rowid;
@@ -9865,6 +9919,7 @@ class TelegramChatsCompanion extends UpdateCompanion<TelegramChatRow> {
     this.isAllowed = const Value.absent(),
     this.lastMessageAt = const Value.absent(),
     this.unreadCount = const Value.absent(),
+    this.lastReadOutboxMessageId = const Value.absent(),
     this.photoPath = const Value.absent(),
     this.updatedAt = const Value.absent(),
     this.rowid = const Value.absent(),
@@ -9879,6 +9934,7 @@ class TelegramChatsCompanion extends UpdateCompanion<TelegramChatRow> {
     this.isAllowed = const Value.absent(),
     this.lastMessageAt = const Value.absent(),
     this.unreadCount = const Value.absent(),
+    this.lastReadOutboxMessageId = const Value.absent(),
     this.photoPath = const Value.absent(),
     required DateTime updatedAt,
     this.rowid = const Value.absent(),
@@ -9898,6 +9954,7 @@ class TelegramChatsCompanion extends UpdateCompanion<TelegramChatRow> {
     Expression<bool>? isAllowed,
     Expression<DateTime>? lastMessageAt,
     Expression<int>? unreadCount,
+    Expression<String>? lastReadOutboxMessageId,
     Expression<String>? photoPath,
     Expression<DateTime>? updatedAt,
     Expression<int>? rowid,
@@ -9912,6 +9969,8 @@ class TelegramChatsCompanion extends UpdateCompanion<TelegramChatRow> {
       if (isAllowed != null) 'is_allowed': isAllowed,
       if (lastMessageAt != null) 'last_message_at': lastMessageAt,
       if (unreadCount != null) 'unread_count': unreadCount,
+      if (lastReadOutboxMessageId != null)
+        'last_read_outbox_message_id': lastReadOutboxMessageId,
       if (photoPath != null) 'photo_path': photoPath,
       if (updatedAt != null) 'updated_at': updatedAt,
       if (rowid != null) 'rowid': rowid,
@@ -9928,6 +9987,7 @@ class TelegramChatsCompanion extends UpdateCompanion<TelegramChatRow> {
     Value<bool>? isAllowed,
     Value<DateTime?>? lastMessageAt,
     Value<int>? unreadCount,
+    Value<String?>? lastReadOutboxMessageId,
     Value<String?>? photoPath,
     Value<DateTime>? updatedAt,
     Value<int>? rowid,
@@ -9942,6 +10002,8 @@ class TelegramChatsCompanion extends UpdateCompanion<TelegramChatRow> {
       isAllowed: isAllowed ?? this.isAllowed,
       lastMessageAt: lastMessageAt ?? this.lastMessageAt,
       unreadCount: unreadCount ?? this.unreadCount,
+      lastReadOutboxMessageId:
+          lastReadOutboxMessageId ?? this.lastReadOutboxMessageId,
       photoPath: photoPath ?? this.photoPath,
       updatedAt: updatedAt ?? this.updatedAt,
       rowid: rowid ?? this.rowid,
@@ -9978,6 +10040,11 @@ class TelegramChatsCompanion extends UpdateCompanion<TelegramChatRow> {
     if (unreadCount.present) {
       map['unread_count'] = Variable<int>(unreadCount.value);
     }
+    if (lastReadOutboxMessageId.present) {
+      map['last_read_outbox_message_id'] = Variable<String>(
+        lastReadOutboxMessageId.value,
+      );
+    }
     if (photoPath.present) {
       map['photo_path'] = Variable<String>(photoPath.value);
     }
@@ -10002,6 +10069,7 @@ class TelegramChatsCompanion extends UpdateCompanion<TelegramChatRow> {
           ..write('isAllowed: $isAllowed, ')
           ..write('lastMessageAt: $lastMessageAt, ')
           ..write('unreadCount: $unreadCount, ')
+          ..write('lastReadOutboxMessageId: $lastReadOutboxMessageId, ')
           ..write('photoPath: $photoPath, ')
           ..write('updatedAt: $updatedAt, ')
           ..write('rowid: $rowid')
@@ -10342,6 +10410,10 @@ class $TelegramMessagesTable extends TelegramMessages
 
   @override
   Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  List<Set<GeneratedColumn>> get uniqueKeys => [
+    {accountId, telegramChatId, telegramMessageId},
+  ];
   @override
   TelegramMessageRow map(Map<String, dynamic> data, {String? tablePrefix}) {
     final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
@@ -15010,6 +15082,370 @@ class BrowserBookmarksCompanion extends UpdateCompanion<BrowserBookmarkRow> {
   }
 }
 
+class $BrowserHistoryEntriesTable extends BrowserHistoryEntries
+    with TableInfo<$BrowserHistoryEntriesTable, BrowserHistoryEntryRow> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $BrowserHistoryEntriesTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<String> id = GeneratedColumn<String>(
+    'id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _titleMeta = const VerificationMeta('title');
+  @override
+  late final GeneratedColumn<String> title = GeneratedColumn<String>(
+    'title',
+    aliasedName,
+    false,
+    additionalChecks: GeneratedColumn.checkTextLength(
+      minTextLength: 1,
+      maxTextLength: 300,
+    ),
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _urlMeta = const VerificationMeta('url');
+  @override
+  late final GeneratedColumn<String> url = GeneratedColumn<String>(
+    'url',
+    aliasedName,
+    false,
+    additionalChecks: GeneratedColumn.checkTextLength(
+      minTextLength: 1,
+      maxTextLength: 2000,
+    ),
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _visitedAtMeta = const VerificationMeta(
+    'visitedAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> visitedAt = GeneratedColumn<DateTime>(
+    'visited_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _visitCountMeta = const VerificationMeta(
+    'visitCount',
+  );
+  @override
+  late final GeneratedColumn<int> visitCount = GeneratedColumn<int>(
+    'visit_count',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(1),
+  );
+  @override
+  List<GeneratedColumn> get $columns => [id, title, url, visitedAt, visitCount];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'browser_history_entries';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<BrowserHistoryEntryRow> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    } else if (isInserting) {
+      context.missing(_idMeta);
+    }
+    if (data.containsKey('title')) {
+      context.handle(
+        _titleMeta,
+        title.isAcceptableOrUnknown(data['title']!, _titleMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_titleMeta);
+    }
+    if (data.containsKey('url')) {
+      context.handle(
+        _urlMeta,
+        url.isAcceptableOrUnknown(data['url']!, _urlMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_urlMeta);
+    }
+    if (data.containsKey('visited_at')) {
+      context.handle(
+        _visitedAtMeta,
+        visitedAt.isAcceptableOrUnknown(data['visited_at']!, _visitedAtMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_visitedAtMeta);
+    }
+    if (data.containsKey('visit_count')) {
+      context.handle(
+        _visitCountMeta,
+        visitCount.isAcceptableOrUnknown(data['visit_count']!, _visitCountMeta),
+      );
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  BrowserHistoryEntryRow map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return BrowserHistoryEntryRow(
+      id: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}id'],
+      )!,
+      title: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}title'],
+      )!,
+      url: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}url'],
+      )!,
+      visitedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}visited_at'],
+      )!,
+      visitCount: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}visit_count'],
+      )!,
+    );
+  }
+
+  @override
+  $BrowserHistoryEntriesTable createAlias(String alias) {
+    return $BrowserHistoryEntriesTable(attachedDatabase, alias);
+  }
+}
+
+class BrowserHistoryEntryRow extends DataClass
+    implements Insertable<BrowserHistoryEntryRow> {
+  final String id;
+  final String title;
+  final String url;
+  final DateTime visitedAt;
+  final int visitCount;
+  const BrowserHistoryEntryRow({
+    required this.id,
+    required this.title,
+    required this.url,
+    required this.visitedAt,
+    required this.visitCount,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<String>(id);
+    map['title'] = Variable<String>(title);
+    map['url'] = Variable<String>(url);
+    map['visited_at'] = Variable<DateTime>(visitedAt);
+    map['visit_count'] = Variable<int>(visitCount);
+    return map;
+  }
+
+  BrowserHistoryEntriesCompanion toCompanion(bool nullToAbsent) {
+    return BrowserHistoryEntriesCompanion(
+      id: Value(id),
+      title: Value(title),
+      url: Value(url),
+      visitedAt: Value(visitedAt),
+      visitCount: Value(visitCount),
+    );
+  }
+
+  factory BrowserHistoryEntryRow.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return BrowserHistoryEntryRow(
+      id: serializer.fromJson<String>(json['id']),
+      title: serializer.fromJson<String>(json['title']),
+      url: serializer.fromJson<String>(json['url']),
+      visitedAt: serializer.fromJson<DateTime>(json['visitedAt']),
+      visitCount: serializer.fromJson<int>(json['visitCount']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<String>(id),
+      'title': serializer.toJson<String>(title),
+      'url': serializer.toJson<String>(url),
+      'visitedAt': serializer.toJson<DateTime>(visitedAt),
+      'visitCount': serializer.toJson<int>(visitCount),
+    };
+  }
+
+  BrowserHistoryEntryRow copyWith({
+    String? id,
+    String? title,
+    String? url,
+    DateTime? visitedAt,
+    int? visitCount,
+  }) => BrowserHistoryEntryRow(
+    id: id ?? this.id,
+    title: title ?? this.title,
+    url: url ?? this.url,
+    visitedAt: visitedAt ?? this.visitedAt,
+    visitCount: visitCount ?? this.visitCount,
+  );
+  BrowserHistoryEntryRow copyWithCompanion(
+    BrowserHistoryEntriesCompanion data,
+  ) {
+    return BrowserHistoryEntryRow(
+      id: data.id.present ? data.id.value : this.id,
+      title: data.title.present ? data.title.value : this.title,
+      url: data.url.present ? data.url.value : this.url,
+      visitedAt: data.visitedAt.present ? data.visitedAt.value : this.visitedAt,
+      visitCount: data.visitCount.present
+          ? data.visitCount.value
+          : this.visitCount,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('BrowserHistoryEntryRow(')
+          ..write('id: $id, ')
+          ..write('title: $title, ')
+          ..write('url: $url, ')
+          ..write('visitedAt: $visitedAt, ')
+          ..write('visitCount: $visitCount')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(id, title, url, visitedAt, visitCount);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is BrowserHistoryEntryRow &&
+          other.id == this.id &&
+          other.title == this.title &&
+          other.url == this.url &&
+          other.visitedAt == this.visitedAt &&
+          other.visitCount == this.visitCount);
+}
+
+class BrowserHistoryEntriesCompanion
+    extends UpdateCompanion<BrowserHistoryEntryRow> {
+  final Value<String> id;
+  final Value<String> title;
+  final Value<String> url;
+  final Value<DateTime> visitedAt;
+  final Value<int> visitCount;
+  final Value<int> rowid;
+  const BrowserHistoryEntriesCompanion({
+    this.id = const Value.absent(),
+    this.title = const Value.absent(),
+    this.url = const Value.absent(),
+    this.visitedAt = const Value.absent(),
+    this.visitCount = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  BrowserHistoryEntriesCompanion.insert({
+    required String id,
+    required String title,
+    required String url,
+    required DateTime visitedAt,
+    this.visitCount = const Value.absent(),
+    this.rowid = const Value.absent(),
+  }) : id = Value(id),
+       title = Value(title),
+       url = Value(url),
+       visitedAt = Value(visitedAt);
+  static Insertable<BrowserHistoryEntryRow> custom({
+    Expression<String>? id,
+    Expression<String>? title,
+    Expression<String>? url,
+    Expression<DateTime>? visitedAt,
+    Expression<int>? visitCount,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (title != null) 'title': title,
+      if (url != null) 'url': url,
+      if (visitedAt != null) 'visited_at': visitedAt,
+      if (visitCount != null) 'visit_count': visitCount,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  BrowserHistoryEntriesCompanion copyWith({
+    Value<String>? id,
+    Value<String>? title,
+    Value<String>? url,
+    Value<DateTime>? visitedAt,
+    Value<int>? visitCount,
+    Value<int>? rowid,
+  }) {
+    return BrowserHistoryEntriesCompanion(
+      id: id ?? this.id,
+      title: title ?? this.title,
+      url: url ?? this.url,
+      visitedAt: visitedAt ?? this.visitedAt,
+      visitCount: visitCount ?? this.visitCount,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<String>(id.value);
+    }
+    if (title.present) {
+      map['title'] = Variable<String>(title.value);
+    }
+    if (url.present) {
+      map['url'] = Variable<String>(url.value);
+    }
+    if (visitedAt.present) {
+      map['visited_at'] = Variable<DateTime>(visitedAt.value);
+    }
+    if (visitCount.present) {
+      map['visit_count'] = Variable<int>(visitCount.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('BrowserHistoryEntriesCompanion(')
+          ..write('id: $id, ')
+          ..write('title: $title, ')
+          ..write('url: $url, ')
+          ..write('visitedAt: $visitedAt, ')
+          ..write('visitCount: $visitCount, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
 class $SystemMetricSamplesTable extends SystemMetricSamples
     with TableInfo<$SystemMetricSamplesTable, SystemMetricSampleRow> {
   @override
@@ -16252,6 +16688,8 @@ abstract class _$AppDatabase extends GeneratedDatabase {
   late final $BrowserBookmarksTable browserBookmarks = $BrowserBookmarksTable(
     this,
   );
+  late final $BrowserHistoryEntriesTable browserHistoryEntries =
+      $BrowserHistoryEntriesTable(this);
   late final $SystemMetricSamplesTable systemMetricSamples =
       $SystemMetricSamplesTable(this);
   late final $FeatureUsageSessionsTable featureUsageSessions =
@@ -16291,6 +16729,7 @@ abstract class _$AppDatabase extends GeneratedDatabase {
     slackConversations,
     slackMessages,
     browserBookmarks,
+    browserHistoryEntries,
     systemMetricSamples,
     featureUsageSessions,
   ];
@@ -25435,6 +25874,7 @@ typedef $$TelegramChatsTableCreateCompanionBuilder =
       Value<bool> isAllowed,
       Value<DateTime?> lastMessageAt,
       Value<int> unreadCount,
+      Value<String?> lastReadOutboxMessageId,
       Value<String?> photoPath,
       required DateTime updatedAt,
       Value<int> rowid,
@@ -25450,6 +25890,7 @@ typedef $$TelegramChatsTableUpdateCompanionBuilder =
       Value<bool> isAllowed,
       Value<DateTime?> lastMessageAt,
       Value<int> unreadCount,
+      Value<String?> lastReadOutboxMessageId,
       Value<String?> photoPath,
       Value<DateTime> updatedAt,
       Value<int> rowid,
@@ -25536,6 +25977,11 @@ class $$TelegramChatsTableFilterComposer
     builder: (column) => ColumnFilters(column),
   );
 
+  ColumnFilters<String> get lastReadOutboxMessageId => $composableBuilder(
+    column: $table.lastReadOutboxMessageId,
+    builder: (column) => ColumnFilters(column),
+  );
+
   ColumnFilters<String> get photoPath => $composableBuilder(
     column: $table.photoPath,
     builder: (column) => ColumnFilters(column),
@@ -25619,6 +26065,11 @@ class $$TelegramChatsTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<String> get lastReadOutboxMessageId => $composableBuilder(
+    column: $table.lastReadOutboxMessageId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<String> get photoPath => $composableBuilder(
     column: $table.photoPath,
     builder: (column) => ColumnOrderings(column),
@@ -25692,6 +26143,11 @@ class $$TelegramChatsTableAnnotationComposer
     builder: (column) => column,
   );
 
+  GeneratedColumn<String> get lastReadOutboxMessageId => $composableBuilder(
+    column: $table.lastReadOutboxMessageId,
+    builder: (column) => column,
+  );
+
   GeneratedColumn<String> get photoPath =>
       $composableBuilder(column: $table.photoPath, builder: (column) => column);
 
@@ -25759,6 +26215,7 @@ class $$TelegramChatsTableTableManager
                 Value<bool> isAllowed = const Value.absent(),
                 Value<DateTime?> lastMessageAt = const Value.absent(),
                 Value<int> unreadCount = const Value.absent(),
+                Value<String?> lastReadOutboxMessageId = const Value.absent(),
                 Value<String?> photoPath = const Value.absent(),
                 Value<DateTime> updatedAt = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
@@ -25772,6 +26229,7 @@ class $$TelegramChatsTableTableManager
                 isAllowed: isAllowed,
                 lastMessageAt: lastMessageAt,
                 unreadCount: unreadCount,
+                lastReadOutboxMessageId: lastReadOutboxMessageId,
                 photoPath: photoPath,
                 updatedAt: updatedAt,
                 rowid: rowid,
@@ -25787,6 +26245,7 @@ class $$TelegramChatsTableTableManager
                 Value<bool> isAllowed = const Value.absent(),
                 Value<DateTime?> lastMessageAt = const Value.absent(),
                 Value<int> unreadCount = const Value.absent(),
+                Value<String?> lastReadOutboxMessageId = const Value.absent(),
                 Value<String?> photoPath = const Value.absent(),
                 required DateTime updatedAt,
                 Value<int> rowid = const Value.absent(),
@@ -25800,6 +26259,7 @@ class $$TelegramChatsTableTableManager
                 isAllowed: isAllowed,
                 lastMessageAt: lastMessageAt,
                 unreadCount: unreadCount,
+                lastReadOutboxMessageId: lastReadOutboxMessageId,
                 photoPath: photoPath,
                 updatedAt: updatedAt,
                 rowid: rowid,
@@ -29365,6 +29825,227 @@ typedef $$BrowserBookmarksTableProcessedTableManager =
       BrowserBookmarkRow,
       PrefetchHooks Function()
     >;
+typedef $$BrowserHistoryEntriesTableCreateCompanionBuilder =
+    BrowserHistoryEntriesCompanion Function({
+      required String id,
+      required String title,
+      required String url,
+      required DateTime visitedAt,
+      Value<int> visitCount,
+      Value<int> rowid,
+    });
+typedef $$BrowserHistoryEntriesTableUpdateCompanionBuilder =
+    BrowserHistoryEntriesCompanion Function({
+      Value<String> id,
+      Value<String> title,
+      Value<String> url,
+      Value<DateTime> visitedAt,
+      Value<int> visitCount,
+      Value<int> rowid,
+    });
+
+class $$BrowserHistoryEntriesTableFilterComposer
+    extends Composer<_$AppDatabase, $BrowserHistoryEntriesTable> {
+  $$BrowserHistoryEntriesTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<String> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get title => $composableBuilder(
+    column: $table.title,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get url => $composableBuilder(
+    column: $table.url,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get visitedAt => $composableBuilder(
+    column: $table.visitedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get visitCount => $composableBuilder(
+    column: $table.visitCount,
+    builder: (column) => ColumnFilters(column),
+  );
+}
+
+class $$BrowserHistoryEntriesTableOrderingComposer
+    extends Composer<_$AppDatabase, $BrowserHistoryEntriesTable> {
+  $$BrowserHistoryEntriesTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<String> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get title => $composableBuilder(
+    column: $table.title,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get url => $composableBuilder(
+    column: $table.url,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get visitedAt => $composableBuilder(
+    column: $table.visitedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get visitCount => $composableBuilder(
+    column: $table.visitCount,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$BrowserHistoryEntriesTableAnnotationComposer
+    extends Composer<_$AppDatabase, $BrowserHistoryEntriesTable> {
+  $$BrowserHistoryEntriesTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<String> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<String> get title =>
+      $composableBuilder(column: $table.title, builder: (column) => column);
+
+  GeneratedColumn<String> get url =>
+      $composableBuilder(column: $table.url, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get visitedAt =>
+      $composableBuilder(column: $table.visitedAt, builder: (column) => column);
+
+  GeneratedColumn<int> get visitCount => $composableBuilder(
+    column: $table.visitCount,
+    builder: (column) => column,
+  );
+}
+
+class $$BrowserHistoryEntriesTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $BrowserHistoryEntriesTable,
+          BrowserHistoryEntryRow,
+          $$BrowserHistoryEntriesTableFilterComposer,
+          $$BrowserHistoryEntriesTableOrderingComposer,
+          $$BrowserHistoryEntriesTableAnnotationComposer,
+          $$BrowserHistoryEntriesTableCreateCompanionBuilder,
+          $$BrowserHistoryEntriesTableUpdateCompanionBuilder,
+          (
+            BrowserHistoryEntryRow,
+            BaseReferences<
+              _$AppDatabase,
+              $BrowserHistoryEntriesTable,
+              BrowserHistoryEntryRow
+            >,
+          ),
+          BrowserHistoryEntryRow,
+          PrefetchHooks Function()
+        > {
+  $$BrowserHistoryEntriesTableTableManager(
+    _$AppDatabase db,
+    $BrowserHistoryEntriesTable table,
+  ) : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$BrowserHistoryEntriesTableFilterComposer(
+                $db: db,
+                $table: table,
+              ),
+          createOrderingComposer: () =>
+              $$BrowserHistoryEntriesTableOrderingComposer(
+                $db: db,
+                $table: table,
+              ),
+          createComputedFieldComposer: () =>
+              $$BrowserHistoryEntriesTableAnnotationComposer(
+                $db: db,
+                $table: table,
+              ),
+          updateCompanionCallback:
+              ({
+                Value<String> id = const Value.absent(),
+                Value<String> title = const Value.absent(),
+                Value<String> url = const Value.absent(),
+                Value<DateTime> visitedAt = const Value.absent(),
+                Value<int> visitCount = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => BrowserHistoryEntriesCompanion(
+                id: id,
+                title: title,
+                url: url,
+                visitedAt: visitedAt,
+                visitCount: visitCount,
+                rowid: rowid,
+              ),
+          createCompanionCallback:
+              ({
+                required String id,
+                required String title,
+                required String url,
+                required DateTime visitedAt,
+                Value<int> visitCount = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => BrowserHistoryEntriesCompanion.insert(
+                id: id,
+                title: title,
+                url: url,
+                visitedAt: visitedAt,
+                visitCount: visitCount,
+                rowid: rowid,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .toList(),
+          prefetchHooksCallback: null,
+        ),
+      );
+}
+
+typedef $$BrowserHistoryEntriesTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $BrowserHistoryEntriesTable,
+      BrowserHistoryEntryRow,
+      $$BrowserHistoryEntriesTableFilterComposer,
+      $$BrowserHistoryEntriesTableOrderingComposer,
+      $$BrowserHistoryEntriesTableAnnotationComposer,
+      $$BrowserHistoryEntriesTableCreateCompanionBuilder,
+      $$BrowserHistoryEntriesTableUpdateCompanionBuilder,
+      (
+        BrowserHistoryEntryRow,
+        BaseReferences<
+          _$AppDatabase,
+          $BrowserHistoryEntriesTable,
+          BrowserHistoryEntryRow
+        >,
+      ),
+      BrowserHistoryEntryRow,
+      PrefetchHooks Function()
+    >;
 typedef $$SystemMetricSamplesTableCreateCompanionBuilder =
     SystemMetricSamplesCompanion Function({
       required String id,
@@ -30035,6 +30716,8 @@ class $AppDatabaseManager {
       $$SlackMessagesTableTableManager(_db, _db.slackMessages);
   $$BrowserBookmarksTableTableManager get browserBookmarks =>
       $$BrowserBookmarksTableTableManager(_db, _db.browserBookmarks);
+  $$BrowserHistoryEntriesTableTableManager get browserHistoryEntries =>
+      $$BrowserHistoryEntriesTableTableManager(_db, _db.browserHistoryEntries);
   $$SystemMetricSamplesTableTableManager get systemMetricSamples =>
       $$SystemMetricSamplesTableTableManager(_db, _db.systemMetricSamples);
   $$FeatureUsageSessionsTableTableManager get featureUsageSessions =>

@@ -5,10 +5,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
+import 'package:gizecare/core/errors/result.dart';
 import 'package:gizecare/core/platform/app_platform.dart';
 import 'package:gizecare/core/theme/app_colors.dart';
 import 'package:gizecare/core/widgets/app_snackbar.dart';
 import 'package:gizecare/core/widgets/linkable_text.dart';
+import 'package:gizecare/features/documents/presentation/document_reader_dialog.dart';
 import 'package:gizecare/features/telegram/domain/entities/telegram_entities.dart';
 import 'package:gizecare/features/telegram/domain/telegram_config.dart';
 import 'package:gizecare/features/telegram/presentation/providers/telegram_providers.dart';
@@ -80,12 +82,8 @@ class _TelegramPageState extends ConsumerState<TelegramPage> {
     }
     final ok = await showTelegramConnectDialog(context, ref);
     if (!ok || !mounted) return;
-    final sync = await ref.read(telegramRepositoryProvider).syncChats();
-    if (!mounted) return;
-    sync.when(
-      onSuccess: (_) => showTelegramChatPicker(context, ref),
-      onFailure: (f) => AppSnackBar.show(context, f.message),
-    );
+    unawaited(ref.read(telegramRepositoryProvider).syncChats());
+    await showTelegramChatPicker(context, ref);
   }
 
   Future<void> _disconnect() async {
@@ -101,12 +99,10 @@ class _TelegramPageState extends ConsumerState<TelegramPage> {
   }
 
   Future<void> _syncAndPick() async {
-    final result = await ref.read(telegramRepositoryProvider).syncChats();
+    // Open picker immediately from cache; refresh TDLib chats in the background.
+    unawaited(ref.read(telegramRepositoryProvider).syncChats());
     if (!mounted) return;
-    result.when(
-      onSuccess: (_) => showTelegramChatPicker(context, ref),
-      onFailure: (f) => AppSnackBar.show(context, f.message),
-    );
+    await showTelegramChatPicker(context, ref);
   }
 
   Future<void> _openChat(TelegramChat chat) async {
@@ -925,6 +921,25 @@ class _ChatThreadPaneState extends ConsumerState<_ChatThreadPane> {
     super.dispose();
   }
 
+  Future<void> _openDocument(TelegramMessage message) async {
+    AppSnackBar.show(context, 'Opening ${message.documentFileName}…');
+    final result = await ref.read(telegramRepositoryProvider).ensureMessageMedia(
+          message.telegramChatId,
+          message.telegramMessageId,
+        );
+    if (!mounted) return;
+    switch (result) {
+      case Success(:final value):
+        await openDocumentViewer(
+          context,
+          filePath: value,
+          displayName: message.documentFileName,
+        );
+      case Err(:final failure):
+        AppSnackBar.show(context, failure.message);
+    }
+  }
+
   Future<void> _sendText(String text) async {
     final chat = widget.chat;
     if (_editing != null) {
@@ -1319,14 +1334,22 @@ class _ChatThreadPaneState extends ConsumerState<_ChatThreadPane> {
                     ),
                   );
                 }
+                // reverse:true keeps the newest messages pinned to the bottom
+                // when opening a chat or when new messages arrive.
                 return ListView.builder(
+                  key: ValueKey('thread-${chat.telegramChatId}'),
                   controller: _listController,
+                  reverse: true,
                   padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
                   itemCount: messages.length,
                   itemBuilder: (context, index) {
-                    final msg = messages[index];
-                    final showDate = index == 0 ||
-                        !_sameDay(messages[index - 1].sentAt, msg.sentAt);
+                    final reverseIndex = messages.length - 1 - index;
+                    final msg = messages[reverseIndex];
+                    final older = reverseIndex == 0
+                        ? null
+                        : messages[reverseIndex - 1];
+                    final showDate = older == null ||
+                        !_sameDay(older.sentAt, msg.sentAt);
                     final replied = msg.replyToMessageId == null
                         ? null
                         : messages
@@ -1375,11 +1398,18 @@ class _ChatThreadPaneState extends ConsumerState<_ChatThreadPane> {
                               (replied?.isOutgoing == true ? 'You' : null),
                           replyBody: replied?.text.split('|').first ??
                               msg.replyPreview,
+                          isOutgoingRead: msg.isOutgoing &&
+                              chat.isOutgoingMessageRead(
+                                msg.telegramMessageId,
+                              ),
                           onOpenImage: msg.hasPhoto
                               ? () => showTelegramImageViewer(
                                     context,
                                     msg.mediaPath!,
                                   )
+                              : null,
+                          onOpenDocument: msg.hasDocument
+                              ? () => _openDocument(msg)
                               : null,
                           onActions: (pos) => _onMessageAction(msg, pos),
                           onReplyTap: msg.replyToMessageId != null
@@ -1433,9 +1463,11 @@ class _MessageBubble extends StatelessWidget {
     required this.timeLabel,
     required this.showSender,
     this.highlighted = false,
+    this.isOutgoingRead = false,
     this.replyLabel,
     this.replyBody,
     this.onOpenImage,
+    this.onOpenDocument,
     this.onActions,
     this.onReplyTap,
   });
@@ -1444,9 +1476,11 @@ class _MessageBubble extends StatelessWidget {
   final String timeLabel;
   final bool showSender;
   final bool highlighted;
+  final bool isOutgoingRead;
   final String? replyLabel;
   final String? replyBody;
   final VoidCallback? onOpenImage;
+  final VoidCallback? onOpenDocument;
   final ValueChanged<Offset>? onActions;
   final VoidCallback? onReplyTap;
 
@@ -1492,15 +1526,12 @@ class _MessageBubble extends StatelessWidget {
                 Offset? tapPos;
                 return GestureDetector(
                   behavior: HitTestBehavior.deferToChild,
-                  onTapDown: (d) => tapPos = d.globalPosition,
                   onSecondaryTapDown: (d) => tapPos = d.globalPosition,
                   onLongPressStart: (d) {
                     onActions?.call(d.globalPosition);
                   },
-                  onTap: () {
-                    final p = tapPos;
-                    if (p != null) onActions?.call(p);
-                  },
+                  // Document chips use InkWell; keep menu on long-press / right-click
+                  // so a tap on a file opens the reader instead of the actions menu.
                   onSecondaryTap: () {
                     final p = tapPos;
                     if (p != null) onActions?.call(p);
@@ -1625,27 +1656,86 @@ class _MessageBubble extends StatelessWidget {
                                 ?.copyWith(color: fg),
                           )
                         else if (message.contentType == 'document')
-                          Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Icon(
-                                Icons.insert_drive_file_outlined,
-                                size: 16,
-                                color: fg,
-                              ),
-                              const SizedBox(width: 6),
-                              Flexible(
-                                child: LinkableText(
-                                  message.text.isEmpty
-                                      ? 'Document'
-                                      : message.text,
-                                  style: Theme.of(context)
-                                      .textTheme
-                                      .bodyMedium
-                                      ?.copyWith(color: fg),
+                          Material(
+                            color: Colors.transparent,
+                            child: InkWell(
+                              onTap: onOpenDocument,
+                              borderRadius: BorderRadius.circular(10),
+                              child: Container(
+                                constraints: const BoxConstraints(maxWidth: 280),
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 10,
+                                  vertical: 8,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: fg.withValues(alpha: 0.08),
+                                  borderRadius: BorderRadius.circular(10),
+                                  border: Border.all(
+                                    color: fg.withValues(alpha: 0.12),
+                                  ),
+                                ),
+                                child: Row(
+                                  children: [
+                                    Icon(
+                                      message.documentFileName
+                                              .toLowerCase()
+                                              .endsWith('.pdf')
+                                          ? Icons.picture_as_pdf_rounded
+                                          : Icons.insert_drive_file_outlined,
+                                      size: 28,
+                                      color: message.documentFileName
+                                              .toLowerCase()
+                                              .endsWith('.pdf')
+                                          ? const Color(0xFFE53935)
+                                          : fg,
+                                    ),
+                                    const SizedBox(width: 10),
+                                    Expanded(
+                                      child: Column(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
+                                        children: [
+                                          Text(
+                                            message.documentFileName,
+                                            maxLines: 2,
+                                            overflow: TextOverflow.ellipsis,
+                                            style: Theme.of(context)
+                                                .textTheme
+                                                .bodyMedium
+                                                ?.copyWith(
+                                                  color: fg,
+                                                  fontWeight: FontWeight.w600,
+                                                ),
+                                          ),
+                                          const SizedBox(height: 2),
+                                          Text(
+                                            onOpenDocument == null
+                                                ? 'Unavailable'
+                                                : (message.documentCaption ??
+                                                    'Tap to open'),
+                                            maxLines: 1,
+                                            overflow: TextOverflow.ellipsis,
+                                            style: Theme.of(context)
+                                                .textTheme
+                                                .labelSmall
+                                                ?.copyWith(
+                                                  color: fg.withValues(
+                                                    alpha: 0.7,
+                                                  ),
+                                                ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                    Icon(
+                                      Icons.chevron_right_rounded,
+                                      size: 20,
+                                      color: fg.withValues(alpha: 0.55),
+                                    ),
+                                  ],
                                 ),
                               ),
-                            ],
+                            ),
                           )
                         else if (message.contentType == 'voice')
                           GestureDetector(
@@ -1701,10 +1791,14 @@ class _MessageBubble extends StatelessWidget {
                               ),
                               if (isOut) ...[
                                 const SizedBox(width: 4),
-                                const Icon(
-                                  Icons.done_all_rounded,
+                                Icon(
+                                  isOutgoingRead
+                                      ? Icons.done_all_rounded
+                                      : Icons.done_rounded,
                                   size: 14,
-                                  color: AppColors.brandMuted,
+                                  color: isOutgoingRead
+                                      ? AppColors.brandMuted
+                                      : fg.withValues(alpha: 0.55),
                                 ),
                               ],
                             ],

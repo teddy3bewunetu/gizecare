@@ -179,6 +179,9 @@ class AppShell extends ConsumerWidget {
     final selectedIndex = _indexForPath(location, destinations);
     final timer = ref.watch(timerControllerProvider);
     ref.watch(alarmMonitorProvider);
+    ref.watch(telegramSessionKeepaliveProvider);
+    ref.watch(telegramFocusSyncProvider);
+    ref.watch(telegramNotificationMonitorProvider);
     // Persist host RAM/CPU/disk samples in the background for Reports → System.
     ref.watch(systemMetricsCaptureControllerProvider);
     // Record which features/pages are open for Reports → System usage.

@@ -89,6 +89,7 @@ class TelegramChat extends Equatable {
     this.username,
     this.lastMessageAt,
     this.unreadCount = 0,
+    this.lastReadOutboxMessageId,
     this.photoPath,
   });
 
@@ -100,9 +101,25 @@ class TelegramChat extends Equatable {
   final String? username;
   final DateTime? lastMessageAt;
   final int unreadCount;
+  /// Highest outgoing message id the peer has read (null = none known).
+  final String? lastReadOutboxMessageId;
   final String? photoPath;
 
-  TelegramChat copyWith({bool? isAllowed, String? photoPath}) {
+  /// Whether an outgoing [messageId] has been read by the peer.
+  bool isOutgoingMessageRead(String messageId) {
+    final last = lastReadOutboxMessageId;
+    if (last == null || last.isEmpty) return false;
+    final a = int.tryParse(messageId);
+    final b = int.tryParse(last);
+    if (a == null || b == null || b <= 0) return false;
+    return a <= b;
+  }
+
+  TelegramChat copyWith({
+    bool? isAllowed,
+    String? photoPath,
+    String? lastReadOutboxMessageId,
+  }) {
     return TelegramChat(
       id: id,
       telegramChatId: telegramChatId,
@@ -112,6 +129,8 @@ class TelegramChat extends Equatable {
       username: username,
       lastMessageAt: lastMessageAt,
       unreadCount: unreadCount,
+      lastReadOutboxMessageId:
+          lastReadOutboxMessageId ?? this.lastReadOutboxMessageId,
       photoPath: photoPath ?? this.photoPath,
     );
   }
@@ -126,6 +145,7 @@ class TelegramChat extends Equatable {
         username,
         lastMessageAt,
         unreadCount,
+        lastReadOutboxMessageId,
         photoPath,
       ];
 }
@@ -141,6 +161,7 @@ class TelegramMessage extends Equatable {
     this.senderName,
     this.contentType = 'text',
     this.mediaPath,
+    this.mediaFileId,
     this.replyToMessageId,
     this.replyPreview,
     this.isEdited = false,
@@ -155,12 +176,30 @@ class TelegramMessage extends Equatable {
   final String? senderName;
   final String contentType;
   final String? mediaPath;
+  final int? mediaFileId;
   final String? replyToMessageId;
   final String? replyPreview;
   final bool isEdited;
 
   bool get hasPhoto =>
       contentType == 'photo' && mediaPath != null && mediaPath!.isNotEmpty;
+
+  bool get hasDocument => contentType == 'document';
+
+  /// Document file name (first segment of [text] when encoded as `name|caption`).
+  String get documentFileName {
+    if (!hasDocument) return 'Document';
+    final name = text.split('|').first.trim();
+    return name.isEmpty ? 'Document' : name;
+  }
+
+  String? get documentCaption {
+    if (!hasDocument) return null;
+    final parts = text.split('|');
+    if (parts.length < 2) return null;
+    final caption = parts.sublist(1).join('|').trim();
+    return caption.isEmpty ? null : caption;
+  }
 
   @override
   List<Object?> get props => [
@@ -173,6 +212,7 @@ class TelegramMessage extends Equatable {
         senderName,
         contentType,
         mediaPath,
+        mediaFileId,
         replyToMessageId,
         replyPreview,
         isEdited,
@@ -270,4 +310,43 @@ String telegramChatTypeToString(TelegramChatType type) {
     TelegramChatType.secret => 'secret',
     TelegramChatType.unknown => 'unknown',
   };
+}
+
+/// Toast / badge payload when a new inbound message arrives.
+class TelegramIncomingNotice extends Equatable {
+  const TelegramIncomingNotice({
+    required this.chatId,
+    required this.chatTitle,
+    required this.preview,
+    required this.receivedAt,
+    this.photoPath,
+    this.senderName,
+    this.chatType = TelegramChatType.private,
+    this.contentType = 'text',
+  });
+
+  final String chatId;
+  final String chatTitle;
+  final String preview;
+  final DateTime receivedAt;
+  final String? photoPath;
+  final String? senderName;
+  final TelegramChatType chatType;
+  final String contentType;
+
+  bool get isGroupLike =>
+      chatType == TelegramChatType.group ||
+      chatType == TelegramChatType.channel;
+
+  @override
+  List<Object?> get props => [
+        chatId,
+        chatTitle,
+        preview,
+        receivedAt,
+        photoPath,
+        senderName,
+        chatType,
+        contentType,
+      ];
 }

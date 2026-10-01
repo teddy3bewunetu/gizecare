@@ -9,6 +9,7 @@ import 'package:gizecare/features/telegram/presentation/providers/telegram_provi
 Future<void> showTelegramChatPicker(BuildContext context, WidgetRef ref) {
   return showDialog<void>(
     context: context,
+    barrierDismissible: true,
     builder: (context) => const _TelegramChatPickerDialog(),
   );
 }
@@ -25,9 +26,17 @@ class _TelegramChatPickerDialogState
     extends ConsumerState<_TelegramChatPickerDialog> {
   final _search = TextEditingController();
   final _selected = <String>{};
-  var _loaded = false;
+  List<TelegramChat> _chats = const [];
+  var _loading = true;
   var _saving = false;
+  String? _error;
   TelegramChatType? _filter;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _load());
+  }
 
   @override
   void dispose() {
@@ -35,125 +44,181 @@ class _TelegramChatPickerDialogState
     super.dispose();
   }
 
+  Future<void> _load() async {
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+    final result = await ref.read(telegramRepositoryProvider).getChats();
+    if (!mounted) return;
+    result.when(
+      onSuccess: (chats) {
+        setState(() {
+          _chats = chats;
+          _selected
+            ..clear()
+            ..addAll(
+              chats.where((c) => c.isAllowed).map((c) => c.telegramChatId),
+            );
+          _loading = false;
+        });
+      },
+      onFailure: (f) {
+        setState(() {
+          _loading = false;
+          _error = f.message;
+        });
+      },
+    );
+  }
+
+  List<TelegramChat> get _filtered {
+    final q = _search.text.trim().toLowerCase();
+    return _chats.where((c) {
+      if (_filter != null && c.chatType != _filter) return false;
+      if (q.isEmpty) return true;
+      return c.title.toLowerCase().contains(q) ||
+          (c.username?.toLowerCase().contains(q) ?? false);
+    }).toList(growable: false);
+  }
+
   @override
   Widget build(BuildContext context) {
-    final chatsAsync = ref.watch(telegramChatsProvider(false));
-
     return AlertDialog(
-      title: const Text('Choose chats for GizeCare'),
+      title: Row(
+        children: [
+          const Expanded(child: Text('Choose chats for GizeCare')),
+          if (!_loading)
+            IconButton(
+              tooltip: 'Refresh list',
+              onPressed: _saving ? null : _load,
+              icon: const Icon(Icons.refresh_rounded, size: 20),
+            ),
+        ],
+      ),
       content: SizedBox(
         width: 520,
         height: 480,
-        child: chatsAsync.when(
-          loading: () => const Center(child: CircularProgressIndicator()),
-          error: (e, _) => Center(child: Text('$e')),
-          data: (chats) {
-            if (!_loaded) {
-              _selected
-                ..clear()
-                ..addAll(
-                  chats.where((c) => c.isAllowed).map((c) => c.telegramChatId),
-                );
-              _loaded = true;
-            }
-            final q = _search.text.trim().toLowerCase();
-            final filtered = chats.where((c) {
-              if (_filter != null && c.chatType != _filter) return false;
-              if (q.isEmpty) return true;
-              return c.title.toLowerCase().contains(q) ||
-                  (c.username?.toLowerCase().contains(q) ?? false);
-            }).toList();
-
-            return Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Text(
-                  'Only selected chats will sync and appear in this app. '
-                  'Telegram still grants the full account session — this filter is enforced by GizeCare.',
-                  style: Theme.of(context).textTheme.bodySmall,
-                ),
-                const SizedBox(height: 12),
-                TextField(
-                  controller: _search,
-                  decoration: const InputDecoration(
-                    hintText: 'Search chats',
-                    prefixIcon: Icon(Icons.search_rounded),
-                    border: OutlineInputBorder(),
-                    isDense: true,
-                  ),
-                  onChanged: (_) => setState(() {}),
-                ),
-                const SizedBox(height: 8),
-                Wrap(
-                  spacing: 8,
-                  children: [
-                    FilterChip(
-                      label: const Text('All'),
-                      selected: _filter == null,
-                      onSelected: (_) => setState(() => _filter = null),
-                    ),
-                    FilterChip(
-                      label: const Text('Private'),
-                      selected: _filter == TelegramChatType.private,
-                      onSelected: (_) =>
-                          setState(() => _filter = TelegramChatType.private),
-                    ),
-                    FilterChip(
-                      label: const Text('Groups'),
-                      selected: _filter == TelegramChatType.group,
-                      onSelected: (_) =>
-                          setState(() => _filter = TelegramChatType.group),
-                    ),
-                    FilterChip(
-                      label: const Text('Channels'),
-                      selected: _filter == TelegramChatType.channel,
-                      onSelected: (_) =>
-                          setState(() => _filter = TelegramChatType.channel),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 8),
-                Expanded(
-                  child: filtered.isEmpty
-                      ? const Center(child: Text('No chats yet — sync first'))
-                      : ListView.builder(
-                          itemCount: filtered.length,
-                          itemBuilder: (context, index) {
-                            final chat = filtered[index];
-                            final checked =
-                                _selected.contains(chat.telegramChatId);
-                            return CheckboxListTile(
-                              value: checked,
-                              dense: true,
-                              secondary: Icon(_iconFor(chat.chatType)),
-                              title: Text(chat.title),
-                              subtitle: Text(
-                                [
-                                  chat.chatType.name,
-                                  if (chat.username != null) '@${chat.username}',
-                                ].join(' · '),
-                              ),
-                              onChanged: (v) {
-                                setState(() {
-                                  if (v == true) {
-                                    _selected.add(chat.telegramChatId);
-                                  } else {
-                                    _selected.remove(chat.telegramChatId);
-                                  }
-                                });
-                              },
-                            );
-                          },
+        child: _loading
+            ? const Center(child: CircularProgressIndicator())
+            : _error != null
+                ? Center(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(_error!),
+                        const SizedBox(height: 12),
+                        FilledButton(
+                          onPressed: _load,
+                          child: const Text('Retry'),
                         ),
-                ),
-                Text(
-                  '${_selected.length} selected',
-                  style: Theme.of(context).textTheme.labelMedium,
-                ),
-              ],
-            );
-          },
-        ),
+                      ],
+                    ),
+                  )
+                : Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Text(
+                        'Only selected chats will sync and appear in this app.',
+                        style: Theme.of(context).textTheme.bodySmall,
+                      ),
+                      const SizedBox(height: 12),
+                      TextField(
+                        controller: _search,
+                        decoration: const InputDecoration(
+                          hintText: 'Search chats',
+                          prefixIcon: Icon(Icons.search_rounded),
+                          border: OutlineInputBorder(),
+                          isDense: true,
+                        ),
+                        onChanged: (_) => setState(() {}),
+                      ),
+                      const SizedBox(height: 8),
+                      Wrap(
+                        spacing: 8,
+                        children: [
+                          FilterChip(
+                            label: const Text('All'),
+                            selected: _filter == null,
+                            onSelected: (_) => setState(() => _filter = null),
+                          ),
+                          FilterChip(
+                            label: const Text('Private'),
+                            selected: _filter == TelegramChatType.private,
+                            onSelected: (_) => setState(
+                              () => _filter = TelegramChatType.private,
+                            ),
+                          ),
+                          FilterChip(
+                            label: const Text('Groups'),
+                            selected: _filter == TelegramChatType.group,
+                            onSelected: (_) => setState(
+                              () => _filter = TelegramChatType.group,
+                            ),
+                          ),
+                          FilterChip(
+                            label: const Text('Channels'),
+                            selected: _filter == TelegramChatType.channel,
+                            onSelected: (_) => setState(
+                              () => _filter = TelegramChatType.channel,
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                      Expanded(
+                        child: _filtered.isEmpty
+                            ? const Center(
+                                child: Text('No chats yet — sync first'),
+                              )
+                            : ListView.builder(
+                                itemCount: _filtered.length,
+                                // Keep scroll/selection snappy for large lists.
+                                itemExtent: 64,
+                                cacheExtent: 400,
+                                addAutomaticKeepAlives: false,
+                                addRepaintBoundaries: true,
+                                itemBuilder: (context, index) {
+                                  final chat = _filtered[index];
+                                  final checked =
+                                      _selected.contains(chat.telegramChatId);
+                                  return CheckboxListTile(
+                                    value: checked,
+                                    dense: true,
+                                    secondary: Icon(_iconFor(chat.chatType)),
+                                    title: Text(
+                                      chat.title,
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                    subtitle: Text(
+                                      [
+                                        chat.chatType.name,
+                                        if (chat.username != null)
+                                          '@${chat.username}',
+                                      ].join(' · '),
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                    onChanged: (v) {
+                                      setState(() {
+                                        if (v == true) {
+                                          _selected.add(chat.telegramChatId);
+                                        } else {
+                                          _selected.remove(chat.telegramChatId);
+                                        }
+                                      });
+                                    },
+                                  );
+                                },
+                              ),
+                      ),
+                      Text(
+                        '${_selected.length} selected',
+                        style: Theme.of(context).textTheme.labelMedium,
+                      ),
+                    ],
+                  ),
       ),
       actions: [
         TextButton(
@@ -178,7 +243,13 @@ class _TelegramChatPickerDialogState
                     onFailure: (f) => AppSnackBar.show(context, f.message),
                   );
                 },
-          child: const Text('Save'),
+          child: _saving
+              ? const SizedBox(
+                  width: 18,
+                  height: 18,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+              : const Text('Save'),
         ),
       ],
     );

@@ -17,6 +17,7 @@ import 'package:gizecare/core/theme/app_colors.dart';
 import 'package:gizecare/core/widgets/app_snackbar.dart';
 import 'package:gizecare/features/browser/domain/browser_bookmark.dart';
 import 'package:gizecare/features/browser/presentation/providers/browser_providers.dart';
+import 'package:gizecare/features/browser/presentation/widgets/browser_history_sheet.dart';
 import 'package:gizecare/features/browser/presentation/widgets/browser_settings_sheet.dart';
 import 'package:gizecare/features/browser/presentation/widgets/youtube_watch_pane.dart';
 
@@ -341,6 +342,12 @@ class _BrowserPageState extends ConsumerState<BrowserPage>
       }
       if (i == _activeIndex) _syncChromeFromTab(tab);
     });
+    unawaited(
+      ref.read(browserHistoryRepositoryProvider).recordVisit(
+            url: url,
+            title: _tabs[i].title,
+          ),
+    );
   }
 
   void _onInAppMedia(String tabId, String url) {
@@ -521,6 +528,12 @@ class _BrowserPageState extends ConsumerState<BrowserPage>
               }
               if (identical(_active, tab)) _syncChromeFromTab(tab);
             });
+            unawaited(
+              ref.read(browserHistoryRepositoryProvider).recordVisit(
+                    url: url,
+                    title: tab.title,
+                  ),
+            );
           },
           onUrlChange: (change) {
             final url = change.url;
@@ -935,6 +948,12 @@ class _BrowserPageState extends ConsumerState<BrowserPage>
                               switch (value) {
                                 case _ChromeMenu.newTab:
                                   await _newTab();
+                                case _ChromeMenu.history:
+                                  await showBrowserHistorySheet(
+                                    context,
+                                    ref,
+                                    onOpenUrl: _submitOmnibox,
+                                  );
                                 case _ChromeMenu.fullscreen:
                                   await _toggleFullscreen();
                                 case _ChromeMenu.inspect:
@@ -951,6 +970,10 @@ class _BrowserPageState extends ConsumerState<BrowserPage>
                               const PopupMenuItem(
                                 value: _ChromeMenu.newTab,
                                 child: Text('New tab'),
+                              ),
+                              const PopupMenuItem(
+                                value: _ChromeMenu.history,
+                                child: Text('History'),
                               ),
                               PopupMenuItem(
                                 value: _ChromeMenu.fullscreen,
@@ -1124,7 +1147,15 @@ class _BrowserPageState extends ConsumerState<BrowserPage>
   }
 }
 
-enum _ChromeMenu { newTab, fullscreen, inspect, copy, external, settings }
+enum _ChromeMenu {
+  newTab,
+  history,
+  fullscreen,
+  inspect,
+  copy,
+  external,
+  settings,
+}
 
 class _TabStrip extends StatelessWidget {
   const _TabStrip({

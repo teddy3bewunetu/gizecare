@@ -340,6 +340,26 @@ abstract final class AppDesktopBrowser {
     } catch (e) {
       debugPrint('AppDesktopBrowser.clearProfileData: $e');
     }
+    // Linux WebKitGTK profile (cookies.sqlite + cache) lives outside the
+    // Windows-oriented userDataFolder path.
+    if (Platform.isLinux) {
+      try {
+        final home = Platform.environment['HOME'] ?? '';
+        if (home.isNotEmpty) {
+          for (final rel in [
+            '.local/share/gizecare/webkit',
+            '.cache/gizecare/webkit',
+          ]) {
+            final d = Directory(p.join(home, rel));
+            if (d.existsSync()) {
+              await d.delete(recursive: true);
+            }
+          }
+        }
+      } catch (e) {
+        debugPrint('AppDesktopBrowser.clearLinuxWebkit: $e');
+      }
+    }
   }
 
   static Future<bool> _launchExternal(String url) async {

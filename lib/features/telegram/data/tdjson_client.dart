@@ -284,6 +284,17 @@ class TdjsonClient {
     });
   }
 
+  Future<Map<String, dynamic>> getMessageResult({
+    required int chatId,
+    required int messageId,
+  }) {
+    return sendForResult({
+      '@type': 'getMessage',
+      'chat_id': chatId,
+      'message_id': messageId,
+    });
+  }
+
   /// Downloads a file and waits until TDLib returns the completed [file].
   Future<String?> downloadFilePath(int fileId, {int priority = 32}) async {
     final result = await sendForResult({

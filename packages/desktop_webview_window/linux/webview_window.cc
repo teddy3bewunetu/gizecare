@@ -103,6 +103,12 @@ void apply_stable_webkit_settings(WebKitSettings *settings) {
   webkit_settings_set_enable_webrtc(settings, FALSE);
   webkit_settings_set_enable_smooth_scrolling(settings, TRUE);
   webkit_settings_set_enable_developer_extras(settings, TRUE);
+  // Chrome-like desktop UA — Google OAuth often rejects WebKitGTK / custom
+  // "AppName" user agents with "This browser or app may not be secure".
+  webkit_settings_set_user_agent(
+      settings,
+      "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) "
+      "Chrome/128.0.0.0 Safari/537.36");
 }
 
 // Called after Flutter has created its GL context, immediately before the
@@ -140,13 +146,43 @@ WebKitWebContext *shared_webkit_context() {
       "base-data-directory", data_dir, "base-cache-directory", cache_dir,
       nullptr);
   context = webkit_web_context_new_with_website_data_manager(manager);
+
+  // Persist cookies to SQLite — without this, Google/session cookies are
+  // often memory-only and vanish when the WebKit process exits.
+  WebKitCookieManager *cookies =
+      webkit_web_context_get_cookie_manager(context);
+  g_autofree gchar *cookie_file =
+      g_build_filename(data_dir, "cookies.sqlite", nullptr);
+  webkit_cookie_manager_set_persistent_storage(
+      cookies, cookie_file, WEBKIT_COOKIE_PERSISTENT_STORAGE_SQLITE);
+  webkit_cookie_manager_set_accept_policy(
+      cookies, WEBKIT_COOKIE_POLICY_ACCEPT_ALWAYS);
+
   webkit_breadcrumb("shared_webkit_context");
   return context;
 }
 
+// OAuth / account hosts that commonly open popups. Related WebViews crash
+// under Flutter's Linux GL compositor — keep them in the same tab instead.
+bool is_auth_or_account_url(const char *uri) {
+  if (uri == nullptr || *uri == '\0') return false;
+  return strstr(uri, "accounts.google.com") != nullptr ||
+         strstr(uri, "account.google.com") != nullptr ||
+         strstr(uri, "google.com/o/oauth2") != nullptr ||
+         strstr(uri, "google.com/signin") != nullptr ||
+         strstr(uri, "apis.google.com/js") != nullptr ||
+         strstr(uri, "login.microsoftonline.com") != nullptr ||
+         strstr(uri, "login.live.com") != nullptr ||
+         strstr(uri, "github.com/login") != nullptr ||
+         strstr(uri, "appleid.apple.com") != nullptr ||
+         strstr(uri, "auth0.com") != nullptr ||
+         strstr(uri, "/oauth") != nullptr ||
+         strstr(uri, "oauth2") != nullptr;
+}
+
 // Force every window.open / target=_blank into the existing tab. Creating a
 // related WebView shares a WebProcess with the parent; adopt/blank of that
-// sibling has SIGTRAP'd the UI when opening YouTube videos.
+// sibling has SIGTRAP'd the UI when opening YouTube videos / Google OAuth.
 GtkWidget *on_create(WebKitWebView *web_view,
                      WebKitNavigationAction *navigation_action,
                      gpointer user_data) {
@@ -158,13 +194,16 @@ GtkWidget *on_create(WebKitWebView *web_view,
       const gchar *uri = webkit_uri_request_get_uri(request);
       if (uri != nullptr && *uri != '\0' &&
           g_strcmp0(uri, "about:blank") != 0) {
-        // Do not load_uri here — returning NULL tells WebKit to navigate
-        // |web_view| itself. Double-loading races the policy handler.
+        // Explicit same-tab load: some WebKit builds do not auto-navigate
+        // the parent when create returns NULL (OAuth popups would no-op).
         webkit_breadcrumb(uri);
+        webkit_web_view_load_uri(web_view, uri);
         return nullptr;
       }
     }
   }
+  // about:blank popup: refuse related view. JS inject provides a fake
+  // window whose location.assign navigates this same tab.
   webkit_breadcrumb("on_create_null_blank");
   return nullptr;
 }
@@ -187,14 +226,25 @@ gboolean on_leave_fullscreen(WebKitWebView *web_view, gpointer user_data) {
 void on_web_process_terminated(WebKitWebView *web_view,
                                WebKitWebProcessTerminationReason reason,
                                gpointer user_data) {
-  (void)user_data;
   char buf[64];
   snprintf(buf, sizeof(buf), "web_process_terminated reason=%d",
            static_cast<int>(reason));
   webkit_breadcrumb(buf);
-  g_warning("WebKit web process terminated (reason=%d)",
+  g_warning("WebKit web process terminated (reason=%d) — reloading",
             static_cast<int>(reason));
-  (void)web_view;
+  // Recover the tab instead of leaving a dead pane that can cascade into a
+  // Flutter "Lost connection to device" when the UI tears down mid-crash.
+  auto *window = static_cast<WebviewWindow *>(user_data);
+  (void)window;
+  if (web_view != nullptr) {
+    const gchar *uri = webkit_web_view_get_uri(web_view);
+    if (uri != nullptr && *uri != '\0' &&
+        g_strcmp0(uri, "about:blank") != 0) {
+      webkit_web_view_reload(web_view);
+    } else {
+      webkit_web_view_load_uri(web_view, "about:blank");
+    }
+  }
 }
 
 void on_uri_notify(GObject *object, GParamSpec *pspec, gpointer user_data) {
@@ -426,16 +476,9 @@ void WebviewWindow::RunJavaScriptWhenContentReady(const char *java_script) {
 
 void WebviewWindow::SetApplicationNameForUserAgent(
     const std::string &app_name) {
-  // WebKit requires a valid HTTP header token — reject non-ASCII / empty.
-  for (unsigned char c : app_name) {
-    if (c < 0x20 || c > 0x7E) {
-      return;
-    }
-  }
-  if (app_name.empty()) return;
-  auto *setting = webkit_web_view_get_settings(WEBKIT_WEB_VIEW(webview_));
-  webkit_settings_set_user_agent(setting,
-                                 (default_user_agent_ + app_name).c_str());
+  // Keep the Chrome-like UA from apply_stable_webkit_settings. Appending a
+  // custom app token causes Google to reject sign-in in embedded WebKit.
+  (void)app_name;
 }
 
 void WebviewWindow::Close() { gtk_window_close(GTK_WINDOW(window_)); }
@@ -689,8 +732,12 @@ gboolean WebviewWindow::DecidePolicy(WebKitPolicyDecision *decision,
             navigation_decision);
     auto *request = webkit_navigation_action_get_request(navigation_action);
     auto *uri = webkit_uri_request_get_uri(request);
-    if (uri != nullptr && *uri != '\0') {
+    if (uri != nullptr && *uri != '\0' &&
+        g_strcmp0(uri, "about:blank") != 0) {
       webkit_breadcrumb(uri);
+      if (is_auth_or_account_url(uri)) {
+        webkit_breadcrumb("auth_same_tab");
+      }
       webkit_web_view_load_uri(WEBKIT_WEB_VIEW(webview_), uri);
       auto *args = fl_value_new_map();
       fl_value_set(args, fl_value_new_string("id"),
