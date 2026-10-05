@@ -123,9 +123,73 @@ class _TelegramComposerState extends State<TelegramComposer> {
     if (file == null || !mounted) return;
     setState(() => _sending = true);
     try {
-      await widget.onSendFile(file.path);
+      final path = await _materializePickedFile(file);
+      await widget.onSendFile(path);
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Unable to upload: $e')),
+      );
     } finally {
       if (mounted) setState(() => _sending = false);
+    }
+  }
+
+  /// Copy into app temp so TDLib can always open the path (Linux portals /
+  /// Fuse mounts often break mid-upload with "Can't open file").
+  Future<String> _materializePickedFile(XFile file) async {
+    final dir = await getTemporaryDirectory();
+    final uploadDir = Directory(p.join(dir.path, 'tg_uploads'));
+    if (!await uploadDir.exists()) {
+      await uploadDir.create(recursive: true);
+    }
+
+    var rawName = file.name.trim().isEmpty ? 'upload' : file.name.trim();
+    if (!rawName.contains('.')) {
+      final mime = (file.mimeType ?? '').toLowerCase();
+      final pathHint = file.path.toLowerCase();
+      if (mime.contains('jpeg') ||
+          mime.contains('jpg') ||
+          pathHint.endsWith('.jpg') ||
+          pathHint.endsWith('.jpeg')) {
+        rawName = '$rawName.jpg';
+      } else if (mime.contains('png') || pathHint.endsWith('.png')) {
+        rawName = '$rawName.png';
+      } else if (mime.contains('gif') || pathHint.endsWith('.gif')) {
+        rawName = '$rawName.gif';
+      } else if (mime.contains('webp') || pathHint.endsWith('.webp')) {
+        rawName = '$rawName.webp';
+      } else if (mime.contains('pdf') || pathHint.endsWith('.pdf')) {
+        rawName = '$rawName.pdf';
+      } else if (p.extension(file.path).isNotEmpty) {
+        rawName = '$rawName${p.extension(file.path)}';
+      } else {
+        rawName = '$rawName.bin';
+      }
+    }
+    final safeName = rawName.replaceAll(RegExp(r'[^\w.\-]+'), '_');
+    final dest = p.join(
+      uploadDir.path,
+      '${DateTime.now().microsecondsSinceEpoch}_$safeName',
+    );
+
+    // Prefer byte read — works when the picker path is a portal FD/URI.
+    try {
+      final bytes = await file.readAsBytes();
+      if (bytes.isEmpty) throw StateError('Selected file is empty');
+      await File(dest).writeAsBytes(bytes, flush: true);
+      return dest;
+    } catch (e) {
+      final path = file.path;
+      if (path.isEmpty) {
+        throw StateError('Unable to read selected file');
+      }
+      final existing = File(path);
+      if (!await existing.exists() || await existing.length() <= 0) {
+        throw StateError('Selected file is missing or empty');
+      }
+      await existing.copy(dest);
+      return dest;
     }
   }
 

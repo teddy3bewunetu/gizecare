@@ -826,6 +826,9 @@ class _ChatThreadPaneState extends ConsumerState<_ChatThreadPane> {
   TelegramMessage? _replyTo;
   TelegramMessage? _editing;
   final _listController = ScrollController();
+  /// Stable keys so reply/search jumps can find bubbles (GlobalObjectKey on
+  /// interpolated strings fails because it uses [identical], not ==).
+  final _messageKeys = <String, GlobalKey>{};
   String? _highlightMessageId;
   String? _statusText;
   var _profileLoading = false;
@@ -833,6 +836,78 @@ class _ChatThreadPaneState extends ConsumerState<_ChatThreadPane> {
   final _searchController = TextEditingController();
   List<TelegramMessage> _searchHits = const [];
   var _searchBusy = false;
+
+  GlobalKey _keyForMessage(String telegramMessageId) {
+    return _messageKeys.putIfAbsent(telegramMessageId, GlobalKey.new);
+  }
+
+  void _scheduleClearHighlight(String messageId) {
+    Future<void>.delayed(const Duration(milliseconds: 1200), () {
+      if (mounted && _highlightMessageId == messageId) {
+        setState(() => _highlightMessageId = null);
+      }
+    });
+  }
+
+  Future<void> _jumpToMessage(
+    String messageId,
+    List<TelegramMessage> messages,
+  ) async {
+    final chronoIndex =
+        messages.indexWhere((m) => m.telegramMessageId == messageId);
+    if (chronoIndex < 0) {
+      if (!mounted) return;
+      AppSnackBar.show(context, 'Original message not loaded');
+      return;
+    }
+
+    setState(() => _highlightMessageId = messageId);
+
+    Future<bool> tryEnsureVisible() async {
+      final ctx = _keyForMessage(messageId).currentContext;
+      if (ctx == null || !ctx.mounted) return false;
+      await Scrollable.ensureVisible(
+        ctx,
+        duration: const Duration(milliseconds: 280),
+        curve: Curves.easeOutCubic,
+        alignment: 0.35,
+      );
+      return true;
+    }
+
+    if (await tryEnsureVisible()) {
+      _scheduleClearHighlight(messageId);
+      return;
+    }
+
+    // Off-screen items aren't built yet — scroll near the target first.
+    if (_listController.hasClients) {
+      final listIndex = messages.length - 1 - chronoIndex;
+      final max = _listController.position.maxScrollExtent;
+      final target = messages.length <= 1
+          ? 0.0
+          : (listIndex / (messages.length - 1)) * max;
+      await _listController.animateTo(
+        target.clamp(0.0, max),
+        duration: const Duration(milliseconds: 360),
+        curve: Curves.easeOutCubic,
+      );
+    }
+
+    for (var i = 0; i < 12; i++) {
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+      if (!mounted) return;
+      if (await tryEnsureVisible()) {
+        _scheduleClearHighlight(messageId);
+        return;
+      }
+    }
+
+    if (mounted) {
+      AppSnackBar.show(context, 'Could not scroll to that message');
+    }
+    _scheduleClearHighlight(messageId);
+  }
 
   @override
   void initState() {
@@ -848,6 +923,8 @@ class _ChatThreadPaneState extends ConsumerState<_ChatThreadPane> {
       _searchOpen = false;
       _searchController.clear();
       _searchHits = const [];
+      _messageKeys.clear();
+      _highlightMessageId = null;
       unawaited(_loadStatus());
     }
   }
@@ -918,6 +995,7 @@ class _ChatThreadPaneState extends ConsumerState<_ChatThreadPane> {
   void dispose() {
     _listController.dispose();
     _searchController.dispose();
+    _messageKeys.clear();
     super.dispose();
   }
 
@@ -1051,10 +1129,7 @@ class _ChatThreadPaneState extends ConsumerState<_ChatThreadPane> {
           );
       if (!context.mounted) return;
       result.when(
-        onSuccess: (_) {
-          AppSnackBar.show(context, 'File sent');
-          ref.invalidate(telegramMessagesProvider(chat.telegramChatId));
-        },
+        onSuccess: (_) {},
         onFailure: (f) => AppSnackBar.show(context, f.message),
       );
     }
@@ -1067,33 +1142,9 @@ class _ChatThreadPaneState extends ConsumerState<_ChatThreadPane> {
           );
       if (!context.mounted) return;
       result.when(
-        onSuccess: (_) {
-          AppSnackBar.show(context, 'Voice message sent');
-          ref.invalidate(telegramMessagesProvider(chat.telegramChatId));
-        },
+        onSuccess: (_) {},
         onFailure: (f) => AppSnackBar.show(context, f.message),
       );
-    }
-
-    void jumpToReply(String messageId) {
-      final key = GlobalObjectKey('tg-msg-$messageId');
-      final ctx = key.currentContext;
-      if (ctx == null) {
-        AppSnackBar.show(context, 'Original message not loaded');
-        return;
-      }
-      setState(() => _highlightMessageId = messageId);
-      Scrollable.ensureVisible(
-        ctx,
-        duration: const Duration(milliseconds: 280),
-        curve: Curves.easeOutCubic,
-        alignment: 0.35,
-      );
-      Future<void>.delayed(const Duration(milliseconds: 1200), () {
-        if (mounted && _highlightMessageId == messageId) {
-          setState(() => _highlightMessageId = null);
-        }
-      });
     }
 
     return Column(
@@ -1296,7 +1347,17 @@ class _ChatThreadPaneState extends ConsumerState<_ChatThreadPane> {
                             ),
                             subtitle: Text(timeFmt.format(hit.sentAt.toLocal())),
                             onTap: () {
-                              jumpToReply(hit.telegramMessageId);
+                              final list = ref
+                                      .read(
+                                        telegramMessagesProvider(
+                                          chat.telegramChatId,
+                                        ),
+                                      )
+                                      .valueOrNull ??
+                                  const <TelegramMessage>[];
+                              unawaited(
+                                _jumpToMessage(hit.telegramMessageId, list),
+                              );
                             },
                           );
                         },
@@ -1359,7 +1420,7 @@ class _ChatThreadPaneState extends ConsumerState<_ChatThreadPane> {
                             )
                             .firstOrNull;
                     return Column(
-                      key: GlobalObjectKey('tg-msg-${msg.telegramMessageId}'),
+                      key: _keyForMessage(msg.telegramMessageId),
                       children: [
                         if (showDate)
                           Padding(
@@ -1413,7 +1474,12 @@ class _ChatThreadPaneState extends ConsumerState<_ChatThreadPane> {
                               : null,
                           onActions: (pos) => _onMessageAction(msg, pos),
                           onReplyTap: msg.replyToMessageId != null
-                              ? () => jumpToReply(msg.replyToMessageId!)
+                              ? () => unawaited(
+                                    _jumpToMessage(
+                                      msg.replyToMessageId!,
+                                      messages,
+                                    ),
+                                  )
                               : null,
                         ),
                       ],
@@ -1628,20 +1694,29 @@ class _MessageBubble extends StatelessWidget {
                             const SizedBox(height: 6),
                           ],
                           GestureDetector(
-                            onTap: onOpenImage,
+                            onTap: message.isSending ? null : onOpenImage,
                             child: ClipRRect(
                               borderRadius: BorderRadius.circular(10),
-                              child: Image.file(
-                                File(message.mediaPath!),
-                                width: 260,
-                                fit: BoxFit.cover,
-                                errorBuilder: (context, error, stackTrace) =>
-                                    Text(
-                                  '📷 Photo unavailable',
-                                  style: TextStyle(
-                                    color: fg.withValues(alpha: 0.7),
+                              child: Stack(
+                                alignment: Alignment.center,
+                                children: [
+                                  Image.file(
+                                    File(message.mediaPath!),
+                                    width: 260,
+                                    fit: BoxFit.cover,
+                                    errorBuilder:
+                                        (context, error, stackTrace) => Text(
+                                      '📷 Photo unavailable',
+                                      style: TextStyle(
+                                        color: fg.withValues(alpha: 0.7),
+                                      ),
+                                    ),
                                   ),
-                                ),
+                                  if (message.isSending)
+                                    _UploadProgressOverlay(
+                                      progress: message.uploadProgress,
+                                    ),
+                                ],
                               ),
                             ),
                           ),
@@ -1649,7 +1724,9 @@ class _MessageBubble extends StatelessWidget {
                           LinkableText(
                             message.text.isNotEmpty && message.text != 'Photo'
                                 ? message.text
-                                : '📷 Loading photo…',
+                                : (message.isSending
+                                    ? '📷 Uploading photo…'
+                                    : '📷 Loading photo…'),
                             style: Theme.of(context)
                                 .textTheme
                                 .bodyMedium
@@ -1659,10 +1736,11 @@ class _MessageBubble extends StatelessWidget {
                           Material(
                             color: Colors.transparent,
                             child: InkWell(
-                              onTap: onOpenDocument,
+                              onTap: message.isSending ? null : onOpenDocument,
                               borderRadius: BorderRadius.circular(10),
                               child: Container(
-                                constraints: const BoxConstraints(maxWidth: 280),
+                                constraints:
+                                    const BoxConstraints(maxWidth: 280),
                                 padding: const EdgeInsets.symmetric(
                                   horizontal: 10,
                                   vertical: 8,
@@ -1676,19 +1754,30 @@ class _MessageBubble extends StatelessWidget {
                                 ),
                                 child: Row(
                                   children: [
-                                    Icon(
-                                      message.documentFileName
-                                              .toLowerCase()
-                                              .endsWith('.pdf')
-                                          ? Icons.picture_as_pdf_rounded
-                                          : Icons.insert_drive_file_outlined,
-                                      size: 28,
-                                      color: message.documentFileName
-                                              .toLowerCase()
-                                              .endsWith('.pdf')
-                                          ? const Color(0xFFE53935)
-                                          : fg,
-                                    ),
+                                    if (message.isSending)
+                                      SizedBox(
+                                        width: 28,
+                                        height: 28,
+                                        child: CircularProgressIndicator(
+                                          strokeWidth: 2.5,
+                                          value: message.uploadProgress,
+                                          color: fg,
+                                        ),
+                                      )
+                                    else
+                                      Icon(
+                                        message.documentFileName
+                                                .toLowerCase()
+                                                .endsWith('.pdf')
+                                            ? Icons.picture_as_pdf_rounded
+                                            : Icons.insert_drive_file_outlined,
+                                        size: 28,
+                                        color: message.documentFileName
+                                                .toLowerCase()
+                                                .endsWith('.pdf')
+                                            ? const Color(0xFFE53935)
+                                            : fg,
+                                      ),
                                     const SizedBox(width: 10),
                                     Expanded(
                                       child: Column(
@@ -1709,10 +1798,14 @@ class _MessageBubble extends StatelessWidget {
                                           ),
                                           const SizedBox(height: 2),
                                           Text(
-                                            onOpenDocument == null
-                                                ? 'Unavailable'
-                                                : (message.documentCaption ??
-                                                    'Tap to open'),
+                                            message.isSending
+                                                ? _uploadLabel(
+                                                    message.uploadProgress,
+                                                  )
+                                                : (onOpenDocument == null
+                                                    ? 'Unavailable'
+                                                    : (message.documentCaption ??
+                                                        'Tap to open')),
                                             maxLines: 1,
                                             overflow: TextOverflow.ellipsis,
                                             style: Theme.of(context)
@@ -1727,11 +1820,12 @@ class _MessageBubble extends StatelessWidget {
                                         ],
                                       ),
                                     ),
-                                    Icon(
-                                      Icons.chevron_right_rounded,
-                                      size: 20,
-                                      color: fg.withValues(alpha: 0.55),
-                                    ),
+                                    if (!message.isSending)
+                                      Icon(
+                                        Icons.chevron_right_rounded,
+                                        size: 20,
+                                        color: fg.withValues(alpha: 0.55),
+                                      ),
                                   ],
                                 ),
                               ),
@@ -1792,13 +1886,17 @@ class _MessageBubble extends StatelessWidget {
                               if (isOut) ...[
                                 const SizedBox(width: 4),
                                 Icon(
-                                  isOutgoingRead
-                                      ? Icons.done_all_rounded
-                                      : Icons.done_rounded,
+                                  message.isSending
+                                      ? Icons.schedule_rounded
+                                      : (isOutgoingRead
+                                          ? Icons.done_all_rounded
+                                          : Icons.done_rounded),
                                   size: 14,
-                                  color: isOutgoingRead
-                                      ? AppColors.brandMuted
-                                      : fg.withValues(alpha: 0.55),
+                                  color: message.isSending
+                                      ? fg.withValues(alpha: 0.55)
+                                      : (isOutgoingRead
+                                          ? AppColors.brandMuted
+                                          : fg.withValues(alpha: 0.55)),
                                 ),
                               ],
                             ],
@@ -1810,6 +1908,54 @@ class _MessageBubble extends StatelessWidget {
                 );
               },
             ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+String _uploadLabel(double? progress) {
+  if (progress == null) return 'Uploading…';
+  final pct = (progress * 100).clamp(0, 100).round();
+  return 'Uploading $pct%';
+}
+
+class _UploadProgressOverlay extends StatelessWidget {
+  const _UploadProgressOverlay({this.progress});
+
+  final double? progress;
+
+  @override
+  Widget build(BuildContext context) {
+    return ColoredBox(
+      color: Colors.black45,
+      child: SizedBox(
+        width: 260,
+        height: 160,
+        child: Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              SizedBox(
+                width: 36,
+                height: 36,
+                child: CircularProgressIndicator(
+                  strokeWidth: 3,
+                  value: progress,
+                  color: Colors.white,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                _uploadLabel(progress),
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
           ),
         ),
       ),

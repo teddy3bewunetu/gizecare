@@ -128,27 +128,46 @@ class _BrowserPageState extends ConsumerState<BrowserPage>
       _bindEngineCallbacks();
       unawaited(_resumeSession());
     } else {
-      unawaited(AppDesktopBrowser.hideSession(_sessionKey));
+      _persistFeatureTabs();
+      unawaited(AppDesktopBrowser.hideFeature(_sessionKey));
     }
   }
 
+  void _persistFeatureTabs() {
+    if (!_useDesktopEngine || _tabs.isEmpty) return;
+    AppDesktopBrowser.saveFeatureTabStrip(
+      _sessionKey,
+      [
+        for (final t in _tabs)
+          DesktopBrowserTabSnapshot(id: t.id, url: t.url, title: t.title),
+      ],
+      activeTabId: _active?.id ?? _sessionKey,
+    );
+  }
+
   Future<void> _resumeSession() async {
-    final known = AppDesktopBrowser.urlForSession(_sessionKey);
-    if (known != null && known.isNotEmpty && mounted) {
+    final active = _active;
+    final tabId = active?.id ??
+        AppDesktopBrowser.featureActiveTabId(_sessionKey) ??
+        _sessionKey;
+    final known = AppDesktopBrowser.urlForSession(tabId) ??
+        active?.url ??
+        AppDesktopBrowser.urlForSession(_sessionKey);
+    if (known != null && known.isNotEmpty && mounted && active != null) {
       setState(() {
-        if (_tabs.isNotEmpty) {
-          _tabs.first.url = known;
-          _tabs.first.title = widget.title?.trim().isNotEmpty == true
+        active.url = known;
+        if (active.title.isEmpty) {
+          active.title = widget.title?.trim().isNotEmpty == true
               ? widget.title!.trim()
               : _hostLabel(known);
-          _syncChromeFromTab(_tabs.first);
-        } else {
-          _urlController.text = known;
-          _secure = known.toLowerCase().startsWith('https://');
         }
+        _syncChromeFromTab(active);
       });
     }
-    await AppDesktopBrowser.openSession(_sessionKey, known ?? widget.initialUrl);
+    await AppDesktopBrowser.openSession(
+      tabId,
+      known ?? widget.initialUrl,
+    );
     if (!mounted) return;
     _scheduleDock();
   }
@@ -171,6 +190,15 @@ class _BrowserPageState extends ConsumerState<BrowserPage>
         ? widget.title!.trim()
         : _hostLabel(start);
 
+    // Restore previously opened tabs for this feature when available.
+    final saved = _useDesktopEngine
+        ? AppDesktopBrowser.featureTabStrip(_sessionKey)
+        : null;
+    if (saved != null && saved.isNotEmpty) {
+      await _bootRestoredTabs(saved, fallbackUrl: start, fallbackTitle: title);
+      return;
+    }
+
     // Resume warm session when possible (do not force-reload app home).
     final warmUrl = AppDesktopBrowser.urlForSession(_sessionKey);
     final resume = warmUrl != null && warmUrl.isNotEmpty;
@@ -190,6 +218,7 @@ class _BrowserPageState extends ConsumerState<BrowserPage>
       _error = null;
       _loadingFor(tab, !resume);
     });
+    _persistFeatureTabs();
 
     if (_useDesktopEngine) {
       final ok = await AppDesktopBrowser.openSession(
@@ -214,6 +243,74 @@ class _BrowserPageState extends ConsumerState<BrowserPage>
     }
   }
 
+  Future<void> _bootRestoredTabs(
+    List<DesktopBrowserTabSnapshot> saved, {
+    required String fallbackUrl,
+    required String fallbackTitle,
+  }) async {
+    final restored = <_BrowserTab>[
+      for (final s in saved)
+        _BrowserTab(
+          id: s.id,
+          url: AppDesktopBrowser.urlForSession(s.id) ??
+              (s.url.trim().isEmpty ? fallbackUrl : s.url),
+          title: s.title.trim().isEmpty
+              ? (s.id == _sessionKey ? fallbackTitle : _hostLabel(s.url))
+              : s.title,
+        ),
+    ];
+    final savedActiveId = AppDesktopBrowser.featureActiveTabId(_sessionKey);
+    var activeIndex = 0;
+    if (savedActiveId != null) {
+      final i = restored.indexWhere((t) => t.id == savedActiveId);
+      if (i >= 0) activeIndex = i;
+    }
+
+    setState(() {
+      _tabs
+        ..clear()
+        ..addAll(restored);
+      _activeIndex = activeIndex;
+      _syncChromeFromTab(_tabs[activeIndex]);
+      _error = null;
+      for (final t in _tabs) {
+        _loadingFor(t, false);
+      }
+    });
+    _persistFeatureTabs();
+
+    // Activate the previously selected tab first, then warm the others hidden.
+    final active = _tabs[activeIndex];
+    final ok = await AppDesktopBrowser.openSession(
+      active.id,
+      active.url,
+      forceNavigate: false,
+    );
+    if (!mounted) return;
+    if (!ok) {
+      setState(() {
+        _error = 'Could not start the in-app browser engine.';
+        _webviewReady = false;
+      });
+      return;
+    }
+
+    for (final tab in _tabs) {
+      if (tab.id == active.id) continue;
+      await AppDesktopBrowser.openSession(
+        tab.id,
+        tab.url,
+        forceNavigate: false,
+        activate: false,
+      );
+      if (!mounted) return;
+    }
+    await AppDesktopBrowser.activateTab(active.id);
+    if (!mounted) return;
+    setState(() => _webviewReady = true);
+    _scheduleDock();
+  }
+
   Future<void> _openTab({
     required String url,
     String? title,
@@ -233,9 +330,10 @@ class _BrowserPageState extends ConsumerState<BrowserPage>
       _error = null;
       _loadingFor(tab, true);
     });
+    _persistFeatureTabs();
 
     if (_useDesktopEngine) {
-      final ok = await AppDesktopBrowser.openTab(tab.id, url);
+      final ok = await AppDesktopBrowser.openTab(tab.id, url, activate: activate);
       if (!mounted) return;
       if (!ok) {
         setState(() {
@@ -273,6 +371,7 @@ class _BrowserPageState extends ConsumerState<BrowserPage>
       _activeIndex = index;
       _syncChromeFromTab(_tabs[index]);
     });
+    _persistFeatureTabs();
     if (_useDesktopEngine) {
       await AppDesktopBrowser.activateTab(_tabs[index].id);
       _scheduleDock();
@@ -286,6 +385,7 @@ class _BrowserPageState extends ConsumerState<BrowserPage>
       // Closing the last tab leaves the browser route.
       if (_useDesktopEngine) {
         await AppDesktopBrowser.closeTab(tab.id);
+        AppDesktopBrowser.clearFeatureTabStrip(_sessionKey);
       }
       _closeBrowser();
       return;
@@ -303,6 +403,7 @@ class _BrowserPageState extends ConsumerState<BrowserPage>
       }
       _syncChromeFromTab(_tabs[_activeIndex]);
     });
+    _persistFeatureTabs();
     if (_useDesktopEngine) {
       await AppDesktopBrowser.activateTab(_tabs[_activeIndex].id);
       WidgetsBinding.instance.addPostFrameCallback((_) => _dockDesktop());
@@ -342,6 +443,7 @@ class _BrowserPageState extends ConsumerState<BrowserPage>
       }
       if (i == _activeIndex) _syncChromeFromTab(tab);
     });
+    _persistFeatureTabs();
     unawaited(
       ref.read(browserHistoryRepositoryProvider).recordVisit(
             url: url,
@@ -353,6 +455,9 @@ class _BrowserPageState extends ConsumerState<BrowserPage>
   void _onInAppMedia(String tabId, String url) {
     if (!mounted) return;
     if (!YoutubeWatchPane.isWatchUrl(url)) return;
+    _dockRetryTimer?.cancel();
+    _lastDockOffset = null;
+    _lastDockSize = null;
     setState(() => _inAppMediaUrl = url);
     unawaited(AppDesktopBrowser.hide());
   }
@@ -395,6 +500,9 @@ class _BrowserPageState extends ConsumerState<BrowserPage>
 
   void _dockDesktop({bool force = false}) {
     if (!_useDesktopEngine || !mounted) return;
+    // In-app YouTube player owns the content pane — keep the companion
+    // WebKit window hidden so it cannot cover Flutter media_kit.
+    if (_inAppMediaUrl != null) return;
     final box = _contentKey.currentContext?.findRenderObject() as RenderBox?;
     if (box == null || !box.hasSize) return;
     final offset = box.localToGlobal(Offset.zero);
@@ -412,12 +520,14 @@ class _BrowserPageState extends ConsumerState<BrowserPage>
   /// Maximize/restore/fullscreen settle over several frames — re-dock repeatedly.
   void _scheduleDock({bool force = true}) {
     if (!_useDesktopEngine || !mounted) return;
+    if (_inAppMediaUrl != null) return;
     if (force) {
       _lastDockOffset = null;
       _lastDockSize = null;
     }
     void dockSoon() {
       if (!mounted) return;
+      if (_inAppMediaUrl != null) return;
       if (force) {
         _lastDockOffset = null;
         _lastDockSize = null;
@@ -456,6 +566,7 @@ class _BrowserPageState extends ConsumerState<BrowserPage>
 
   @override
   void onWindowRestore() {
+    if (_inAppMediaUrl != null) return;
     unawaited(AppDesktopBrowser.show());
     _scheduleDock();
   }
@@ -463,6 +574,20 @@ class _BrowserPageState extends ConsumerState<BrowserPage>
   @override
   void onWindowMinimize() {
     unawaited(AppDesktopBrowser.hide());
+  }
+
+  @override
+  void reassemble() {
+    super.reassemble();
+    // After hot reload the bootstrap hides orphan windows — re-dock if we
+    // still own a live browser session.
+    if (_useDesktopEngine &&
+        _routeVisible &&
+        _webviewReady &&
+        _inAppMediaUrl == null) {
+      unawaited(AppDesktopBrowser.show());
+      _scheduleDock();
+    }
   }
 
   @override
@@ -736,6 +861,7 @@ class _BrowserPageState extends ConsumerState<BrowserPage>
     // as background hides the page and steals the text cursor (blink loop).
     if (!_useDesktopEngine) return;
     if (state == AppLifecycleState.resumed) {
+      if (_inAppMediaUrl != null) return;
       unawaited(AppDesktopBrowser.show());
       _scheduleDock();
     }
@@ -747,7 +873,8 @@ class _BrowserPageState extends ConsumerState<BrowserPage>
     WidgetsBinding.instance.removeObserver(this);
     if (_useDesktopEngine) {
       windowManager.removeListener(this);
-      unawaited(AppDesktopBrowser.hideSession(_sessionKey));
+      _persistFeatureTabs();
+      unawaited(AppDesktopBrowser.hideFeature(_sessionKey));
     }
     if (_browserFullscreen) {
       ref.read(browserFullscreenProvider.notifier).state = false;

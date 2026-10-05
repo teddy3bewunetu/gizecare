@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:gizecare/app/app.dart';
 import 'package:gizecare/app/router/app_router.dart';
 import 'package:gizecare/app/router/app_routes.dart';
+import 'package:gizecare/core/browser/app_desktop_browser.dart';
 import 'package:gizecare/core/di/repository_providers.dart';
 import 'package:gizecare/core/di/service_providers.dart';
 import 'package:gizecare/core/platform/app_platform.dart';
@@ -121,6 +122,9 @@ class _AppBootstrapState extends ConsumerState<_AppBootstrap>
       },
       onQuit: () async {
         _quitting = true;
+        if (AppDesktopBrowser.isAvailable) {
+          await AppDesktopBrowser.closeAll();
+        }
         await windowManager.setPreventClose(false);
         await windowManager.destroy();
         exit(0);
@@ -135,6 +139,23 @@ class _AppBootstrapState extends ConsumerState<_AppBootstrap>
       windowManager.removeListener(this);
     }
     super.dispose();
+  }
+
+  @override
+  void reassemble() {
+    super.reassemble();
+    // Hot reload keeps native WebKit windows alive while the Flutter window
+    // may reset size/position — hide orphans so they don't float on the desktop.
+    if (AppPlatform.isDesktop && AppDesktopBrowser.isAvailable) {
+      unawaited(AppDesktopBrowser.hide());
+    }
+  }
+
+  @override
+  void onWindowMinimize() {
+    if (AppDesktopBrowser.isAvailable) {
+      unawaited(AppDesktopBrowser.hide());
+    }
   }
 
   @override
@@ -153,9 +174,15 @@ class _AppBootstrapState extends ConsumerState<_AppBootstrap>
   Future<void> onWindowClose() async {
     if (_quitting) return;
     if (await _shouldHideToTray()) {
+      if (AppDesktopBrowser.isAvailable) {
+        await AppDesktopBrowser.hide();
+      }
       await ref.read(windowModeServiceProvider).hideToTray();
     } else {
       _quitting = true;
+      if (AppDesktopBrowser.isAvailable) {
+        await AppDesktopBrowser.closeAll();
+      }
       await windowManager.setPreventClose(false);
       await windowManager.destroy();
     }

@@ -165,6 +165,8 @@ class TelegramMessage extends Equatable {
     this.replyToMessageId,
     this.replyPreview,
     this.isEdited = false,
+    this.isSending = false,
+    this.uploadProgress,
   });
 
   final String id;
@@ -180,6 +182,12 @@ class TelegramMessage extends Equatable {
   final String? replyToMessageId;
   final String? replyPreview;
   final bool isEdited;
+
+  /// True while an outgoing photo/file is still uploading.
+  final bool isSending;
+
+  /// 0.0–1.0 while [isSending]; null when unknown / idle.
+  final double? uploadProgress;
 
   bool get hasPhoto =>
       contentType == 'photo' && mediaPath != null && mediaPath!.isNotEmpty;
@@ -201,6 +209,44 @@ class TelegramMessage extends Equatable {
     return caption.isEmpty ? null : caption;
   }
 
+  TelegramMessage copyWith({
+    String? id,
+    String? telegramChatId,
+    String? telegramMessageId,
+    String? text,
+    DateTime? sentAt,
+    bool? isOutgoing,
+    String? senderName,
+    String? contentType,
+    String? mediaPath,
+    int? mediaFileId,
+    String? replyToMessageId,
+    String? replyPreview,
+    bool? isEdited,
+    bool? isSending,
+    double? uploadProgress,
+    bool clearUploadProgress = false,
+  }) {
+    return TelegramMessage(
+      id: id ?? this.id,
+      telegramChatId: telegramChatId ?? this.telegramChatId,
+      telegramMessageId: telegramMessageId ?? this.telegramMessageId,
+      text: text ?? this.text,
+      sentAt: sentAt ?? this.sentAt,
+      isOutgoing: isOutgoing ?? this.isOutgoing,
+      senderName: senderName ?? this.senderName,
+      contentType: contentType ?? this.contentType,
+      mediaPath: mediaPath ?? this.mediaPath,
+      mediaFileId: mediaFileId ?? this.mediaFileId,
+      replyToMessageId: replyToMessageId ?? this.replyToMessageId,
+      replyPreview: replyPreview ?? this.replyPreview,
+      isEdited: isEdited ?? this.isEdited,
+      isSending: isSending ?? this.isSending,
+      uploadProgress:
+          clearUploadProgress ? null : (uploadProgress ?? this.uploadProgress),
+    );
+  }
+
   @override
   List<Object?> get props => [
         id,
@@ -216,6 +262,8 @@ class TelegramMessage extends Equatable {
         replyToMessageId,
         replyPreview,
         isEdited,
+        isSending,
+        uploadProgress,
       ];
 }
 

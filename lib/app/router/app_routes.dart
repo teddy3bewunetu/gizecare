@@ -31,6 +31,7 @@ abstract final class AppRoutes {
   static const String chatgpt = '/apps/chatgpt';
   static const String gemini = '/apps/gemini';
   static const String youtube = '/apps/youtube';
+  static const String terminal = '/apps/terminal';
 
   /// Full-screen in-app browser (`?url=` required, optional `title=`).
   static const String browser = '/browser';

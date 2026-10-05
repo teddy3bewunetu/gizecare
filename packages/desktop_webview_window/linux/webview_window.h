@@ -87,6 +87,9 @@ class WebviewWindow {
   std::function<void()> on_close_callback_;
   bool closing_ = false;
   bool handling_external_media_ = false;
+  // When false, Move() must not auto-show — Dart hides the companion window
+  // for in-app YouTube (media_kit) and dock retries must not uncover it.
+  bool desired_visible_ = true;
 
   std::string default_user_agent_;
 

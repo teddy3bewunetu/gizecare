@@ -54,6 +54,9 @@ import 'package:gizecare/app/router/app_routes.dart';
   if (p == AppRoutes.youtube || p.startsWith('${AppRoutes.youtube}/')) {
     return (key: 'youtube', label: 'YouTube');
   }
+  if (p == AppRoutes.terminal || p.startsWith('${AppRoutes.terminal}/')) {
+    return (key: 'terminal', label: 'Terminal');
+  }
   if (p == AppRoutes.apps || p.startsWith('${AppRoutes.apps}/')) {
     return (key: 'apps', label: 'Apps');
   }

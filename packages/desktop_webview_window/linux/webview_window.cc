@@ -581,13 +581,15 @@ void WebviewWindow::Move(int left, int top, int width, int height) {
   }
 
   // Show without present/raise — raising steals focus from text fields.
-  if (!was_visible) {
+  // Never unhide when Dart asked us to stay hidden (in-app media handoff).
+  if (!was_visible && desired_visible_) {
     gtk_widget_show(window_);
   }
 }
 
 void WebviewWindow::SetVisibility(bool visible) {
   if (window_ == nullptr) return;
+  desired_visible_ = visible;
   if (visible) {
     gtk_widget_show(window_);
   } else {
@@ -597,6 +599,7 @@ void WebviewWindow::SetVisibility(bool visible) {
 
 void WebviewWindow::BringToForeground(bool maximized) {
   if (window_ == nullptr) return;
+  desired_visible_ = true;
   gtk_widget_show(window_);
   gtk_window_present(GTK_WINDOW(window_));
   if (maximized) {

@@ -34,6 +34,9 @@ class DriftTelegramRepository implements TelegramRepository {
   final _pendingMe = <Completer<Map<String, dynamic>>>[];
   final _incomingNotices =
       StreamController<TelegramIncomingNotice>.broadcast();
+  /// Outgoing media still uploading: telegramMessageId → progress 0..1.
+  final _sendingProgress = <String, double>{};
+  final _sendingProgressTick = StreamController<void>.broadcast();
   String? _focusedChatId;
   /// Serialize message writes so concurrent TDLib updates cannot double-insert.
   Future<void> _messageWriteChain = Future<void>.value();
@@ -363,14 +366,58 @@ class DriftTelegramRepository implements TelegramRepository {
 
   @override
   Stream<List<TelegramMessage>> watchMessages(String telegramChatId) {
-    return (_db.select(_db.telegramMessages)
+    final dbStream = (_db.select(_db.telegramMessages)
           ..where((t) => t.telegramChatId.equals(telegramChatId))
           ..orderBy([
             (t) => OrderingTerm.asc(t.sentAt),
             (t) => OrderingTerm.asc(t.telegramMessageId),
           ]))
-        .watch()
-        .map((rows) => rows.map(_mapMessage).toList());
+        .watch();
+
+    late StreamController<List<TelegramMessage>> controller;
+    StreamSubscription<List<TelegramMessageRow>>? dbSub;
+    StreamSubscription<void>? tickSub;
+    List<TelegramMessageRow> lastRows = const [];
+
+    void emit() {
+      if (controller.isClosed) return;
+      controller.add([
+        for (final row in lastRows)
+          _mapMessage(row).copyWith(
+            isSending: _sendingProgress.containsKey(row.telegramMessageId),
+            uploadProgress: _sendingProgress[row.telegramMessageId],
+          ),
+      ]);
+    }
+
+    controller = StreamController<List<TelegramMessage>>(
+      onListen: () {
+        dbSub = dbStream.listen((rows) {
+          lastRows = rows;
+          emit();
+        });
+        tickSub = _sendingProgressTick.stream.listen((_) => emit());
+      },
+      onCancel: () async {
+        await dbSub?.cancel();
+        await tickSub?.cancel();
+      },
+    );
+    return controller.stream;
+  }
+
+  void _setSendingProgress(String telegramMessageId, double progress) {
+    _sendingProgress[telegramMessageId] = progress.clamp(0.0, 1.0);
+    if (!_sendingProgressTick.isClosed) {
+      _sendingProgressTick.add(null);
+    }
+  }
+
+  void _clearSendingProgress(String telegramMessageId) {
+    if (_sendingProgress.remove(telegramMessageId) != null &&
+        !_sendingProgressTick.isClosed) {
+      _sendingProgressTick.add(null);
+    }
   }
 
   @override
@@ -594,18 +641,89 @@ class DriftTelegramRepository implements TelegramRepository {
     required String filePath,
     String? caption,
   }) async {
+    String? pendingId;
     try {
       final guard = await _guardAllowedChat(telegramChatId);
       if (guard != null) return guard;
-      await _client.sendDocumentMessage(
-        chatId: int.parse(telegramChatId),
-        filePath: filePath,
-        caption: caption,
+      final account = (await getAccount()).requireValue;
+      if (account == null) {
+        return const Err(ValidationFailure('Not connected'));
+      }
+      final chatId = int.parse(telegramChatId);
+      final isPhoto = _looksLikeImagePath(filePath);
+      final pending = isPhoto
+          ? await _client.sendPhotoMessage(
+              chatId: chatId,
+              filePath: filePath,
+              caption: caption,
+            )
+          : await _client.sendDocumentMessage(
+              chatId: chatId,
+              filePath: filePath,
+              caption: caption,
+            );
+
+      pendingId = '${pending['id']}';
+      await _upsertMessage(account.id, pending, DateTime.now());
+      // Keep the local file visible while TDLib uploads.
+      final fileName = p.basename(filePath);
+      await (_db.update(_db.telegramMessages)
+            ..where(
+              (t) =>
+                  t.accountId.equals(account.id) &
+                  t.telegramChatId.equals(telegramChatId) &
+                  t.telegramMessageId.equals(pendingId!),
+            ))
+          .write(
+        TelegramMessagesCompanion(
+          mediaPath: Value(filePath),
+          contentType: Value(isPhoto ? 'photo' : 'document'),
+          body: Value(
+            isPhoto
+                ? ((caption != null && caption.trim().isNotEmpty)
+                    ? caption.trim()
+                    : 'Photo')
+                : ((caption != null && caption.trim().isNotEmpty)
+                    ? '$fileName|${caption.trim()}'
+                    : fileName),
+          ),
+          updatedAt: Value(DateTime.now()),
+        ),
       );
+      _setSendingProgress(pendingId, 0.02);
+
+      await _client.waitForOutgoingSend(
+        pending,
+        label: isPhoto ? 'Photo upload failed' : 'File send failed',
+        onProgress: (p) {
+          if (pendingId != null) _setSendingProgress(pendingId, p);
+        },
+      );
+      _clearSendingProgress(pendingId);
       return const Success(unit);
     } catch (e) {
-      return Err(NetworkFailure('Failed to send file', cause: e));
+      if (pendingId != null) _clearSendingProgress(pendingId);
+      final detail = e.toString().replaceFirst(RegExp(r'^Bad state:\s*'), '');
+      final cleaned = detail.replaceFirst(RegExp(r'^StateError:\s*'), '');
+      return Err(
+        NetworkFailure(
+          cleaned.isNotEmpty ? cleaned : 'Failed to send file',
+          cause: e,
+        ),
+      );
     }
+  }
+
+  static bool _looksLikeImagePath(String path) {
+    final lower = path.toLowerCase();
+    return lower.endsWith('.jpg') ||
+        lower.endsWith('.jpeg') ||
+        lower.endsWith('.png') ||
+        lower.endsWith('.gif') ||
+        lower.endsWith('.webp') ||
+        lower.endsWith('.bmp') ||
+        lower.endsWith('.heic') ||
+        lower.endsWith('.heif');
   }
 
   @override
@@ -614,16 +732,33 @@ class DriftTelegramRepository implements TelegramRepository {
     required String filePath,
     required int durationSeconds,
   }) async {
+    String? pendingId;
     try {
       final guard = await _guardAllowedChat(telegramChatId);
       if (guard != null) return guard;
-      await _client.sendVoiceNoteMessage(
+      final account = (await getAccount()).requireValue;
+      if (account == null) {
+        return const Err(ValidationFailure('Not connected'));
+      }
+      final pending = await _client.sendVoiceNoteMessage(
         chatId: int.parse(telegramChatId),
         filePath: filePath,
         durationSeconds: durationSeconds,
       );
+      pendingId = '${pending['id']}';
+      await _upsertMessage(account.id, pending, DateTime.now());
+      _setSendingProgress(pendingId, 0.02);
+      await _client.waitForOutgoingSend(
+        pending,
+        label: 'Voice send failed',
+        onProgress: (p) {
+          if (pendingId != null) _setSendingProgress(pendingId, p);
+        },
+      );
+      _clearSendingProgress(pendingId);
       return const Success(unit);
     } catch (e) {
+      if (pendingId != null) _clearSendingProgress(pendingId);
       final detail = e.toString().replaceFirst('StateError: ', '');
       return Err(
         NetworkFailure(
@@ -1362,6 +1497,7 @@ class DriftTelegramRepository implements TelegramRepository {
       final chatId = '${message['chat_id']}';
       final oldId = update['old_message_id'];
       if (oldId != null) {
+        _clearSendingProgress('$oldId');
         await (_db.delete(_db.telegramMessages)
               ..where(
                 (t) =>
@@ -1391,6 +1527,7 @@ class DriftTelegramRepository implements TelegramRepository {
       final message = update['message'] as Map<String, dynamic>?;
       final account = (await getAccount()).requireValue;
       if (account == null || oldId == null) return;
+      _clearSendingProgress('$oldId');
       final chatId = '${message?['chat_id'] ?? ''}';
       if (chatId.isEmpty) return;
       await (_db.delete(_db.telegramMessages)
@@ -2010,10 +2147,10 @@ class DriftTelegramRepository implements TelegramRepository {
 
     String? localFrom(Map<String, dynamic>? file) {
       final local = file?['local'] as Map<String, dynamic>?;
-      if (local?['is_downloading_completed'] == true) {
-        final path = local?['path'] as String?;
-        if (path != null && path.isNotEmpty) return path;
-      }
+      final path = local?['path'] as String?;
+      // Prefer any local path (including while uploading) so outgoing media
+      // can render immediately.
+      if (path != null && path.isNotEmpty) return path;
       return null;
     }
 

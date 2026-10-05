@@ -21,6 +21,7 @@ import 'package:gizecare/features/tasks/presentation/pages/tasks_page.dart';
 import 'package:gizecare/features/gmail/presentation/pages/gmail_page.dart';
 import 'package:gizecare/features/slack/presentation/pages/slack_page.dart';
 import 'package:gizecare/features/telegram/presentation/pages/telegram_page.dart';
+import 'package:gizecare/features/terminal/presentation/pages/terminal_page.dart';
 import 'package:gizecare/features/tracker/presentation/pages/compact_tracker_page.dart';
 import 'package:gizecare/features/tracker/presentation/pages/tracker_page.dart';
 
@@ -201,6 +202,13 @@ GoRouter createAppRouter({String? initialLocation}) {
                 title: 'YouTube',
                 sessionKey: 'app:youtube',
               ),
+            ),
+          ),
+          GoRoute(
+            path: AppRoutes.terminal,
+            name: 'terminal',
+            pageBuilder: (context, state) => const NoTransitionPage<void>(
+              child: TerminalPage(),
             ),
           ),
           GoRoute(
