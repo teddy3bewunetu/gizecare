@@ -122,6 +122,9 @@ class _BrowserPageState extends ConsumerState<BrowserPage>
     super.didChangeDependencies();
     if (!_useDesktopEngine) return;
     final visible = ModalRoute.of(context)?.isCurrent ?? true;
+    // Root-navigator dialogs make this route non-current; that is not a real
+    // leave of Browser — and hideFeature would clear _activeTabId mid-edit.
+    if (AppDesktopBrowser.overlayLocked) return;
     if (visible == _routeVisible) return;
     _routeVisible = visible;
     if (visible) {
@@ -423,6 +426,7 @@ class _BrowserPageState extends ConsumerState<BrowserPage>
   void _onEngineUrl(String tabId, String url) {
     if (!mounted) return;
     if (url == 'about:blank' || url.trim().isEmpty) return;
+    if (_isTransientGoogleChromeUrl(url)) return;
     if (YoutubeWatchPane.isWatchUrl(url)) {
       _onInAppMedia(tabId, url);
       return;
@@ -502,7 +506,7 @@ class _BrowserPageState extends ConsumerState<BrowserPage>
     if (!_useDesktopEngine || !mounted) return;
     // In-app YouTube player owns the content pane — keep the companion
     // WebKit window hidden so it cannot cover Flutter media_kit.
-    if (_inAppMediaUrl != null) return;
+    if (_inAppMediaUrl != null || AppDesktopBrowser.overlayLocked) return;
     final box = _contentKey.currentContext?.findRenderObject() as RenderBox?;
     if (box == null || !box.hasSize) return;
     final offset = box.localToGlobal(Offset.zero);
@@ -520,14 +524,14 @@ class _BrowserPageState extends ConsumerState<BrowserPage>
   /// Maximize/restore/fullscreen settle over several frames — re-dock repeatedly.
   void _scheduleDock({bool force = true}) {
     if (!_useDesktopEngine || !mounted) return;
-    if (_inAppMediaUrl != null) return;
+    if (_inAppMediaUrl != null || AppDesktopBrowser.overlayLocked) return;
     if (force) {
       _lastDockOffset = null;
       _lastDockSize = null;
     }
     void dockSoon() {
       if (!mounted) return;
-      if (_inAppMediaUrl != null) return;
+      if (_inAppMediaUrl != null || AppDesktopBrowser.overlayLocked) return;
       if (force) {
         _lastDockOffset = null;
         _lastDockSize = null;
@@ -566,7 +570,7 @@ class _BrowserPageState extends ConsumerState<BrowserPage>
 
   @override
   void onWindowRestore() {
-    if (_inAppMediaUrl != null) return;
+    if (_inAppMediaUrl != null || AppDesktopBrowser.overlayLocked) return;
     unawaited(AppDesktopBrowser.show());
     _scheduleDock();
   }
@@ -584,7 +588,8 @@ class _BrowserPageState extends ConsumerState<BrowserPage>
     if (_useDesktopEngine &&
         _routeVisible &&
         _webviewReady &&
-        _inAppMediaUrl == null) {
+        _inAppMediaUrl == null &&
+        !AppDesktopBrowser.overlayLocked) {
       unawaited(AppDesktopBrowser.show());
       _scheduleDock();
     }
@@ -767,17 +772,289 @@ class _BrowserPageState extends ConsumerState<BrowserPage>
   Future<void> _toggleBookmark() async {
     final tab = _active;
     if (tab == null) return;
+    final pageUrl = _canonicalPageUrl(tab.url, fallbackTitle: tab.title);
+    if (pageUrl == null) {
+      AppSnackBar.show(context, 'Cannot bookmark this page');
+      return;
+    }
     final repo = ref.read(browserBookmarkRepositoryProvider);
-    final existing = await repo.findByUrl(tab.url);
-    if (!mounted) return;
-    final found = existing.when(onSuccess: (v) => v, onFailure: (_) => null);
+    final bookmarks = ref.read(browserBookmarksProvider).valueOrNull ?? [];
+    BrowserBookmark? found;
+    for (final b in bookmarks) {
+      final canon = _canonicalPageUrl(b.url, fallbackTitle: b.title) ?? b.url;
+      if (canon == pageUrl || b.url == tab.url) {
+        found = b;
+        break;
+      }
+    }
     if (found != null) {
       await repo.remove(found.id);
       if (mounted) AppSnackBar.show(context, 'Bookmark removed');
     } else {
-      await repo.add(title: tab.title, url: tab.url);
+      final title = tab.title.trim().isEmpty ? _hostLabel(pageUrl) : tab.title;
+      await repo.add(
+        title: title,
+        url: pageUrl,
+        faviconUrl: _BookmarkFavicon.urlFor(pageUrl),
+      );
       if (mounted) AppSnackBar.show(context, 'Bookmark saved');
     }
+  }
+
+  Future<void> _removeBookmark(BrowserBookmark bookmark) async {
+    await ref.read(browserBookmarkRepositoryProvider).remove(bookmark.id);
+    if (mounted) AppSnackBar.show(context, 'Bookmark removed');
+  }
+
+  Future<void> _openBookmark(BrowserBookmark bookmark) async {
+    // Leave YouTube / in-app media overlay so the desktop WebKit surface can
+    // show the bookmarked page.
+    if (_inAppMediaUrl != null) {
+      setState(() => _inAppMediaUrl = null);
+      if (_useDesktopEngine) {
+        await AppDesktopBrowser.show();
+      }
+    }
+
+    final engine = ref.read(browserSearchEngineProvider).valueOrNull ??
+        BrowserSearchEngine.google;
+    final resolved = AppLinkOpener.resolveOmnibox(
+      bookmark.url.trim().isEmpty ? bookmark.title : bookmark.url,
+      searchUrlTemplate: engine.searchUrlTemplate,
+    );
+    final target = _canonicalPageUrl(
+          resolved,
+          fallbackTitle: bookmark.title,
+        ) ??
+        resolved;
+    final title = bookmark.title.trim().isNotEmpty
+        ? bookmark.title.trim()
+        : _hostLabel(target);
+
+    // Repair bad / widget URLs stored from earlier sessions.
+    if (target != bookmark.url) {
+      unawaited(
+        ref.read(browserBookmarkRepositoryProvider).update(
+              id: bookmark.id,
+              title: title,
+              url: target,
+              faviconUrl: _BookmarkFavicon.urlFor(target),
+            ),
+      );
+    }
+
+    // Always open bookmarks in a new tab so the current page is preserved.
+    await _openTab(url: target, title: title, activate: true);
+    if (!mounted) return;
+    final tab = _active;
+    if (tab != null) {
+      setState(() {
+        tab.url = target;
+        tab.title = title;
+        _syncChromeFromTab(tab);
+      });
+    }
+  }
+
+  Future<void> _showBookmarksMenu(BuildContext buttonContext) async {
+    final bookmarks = ref.read(browserBookmarksProvider).valueOrNull ?? [];
+    final box = buttonContext.findRenderObject() as RenderBox?;
+    final overlay =
+        Overlay.of(buttonContext).context.findRenderObject() as RenderBox?;
+    if (box == null || overlay == null) return;
+
+    final position = RelativeRect.fromRect(
+      Rect.fromPoints(
+        box.localToGlobal(Offset.zero, ancestor: overlay),
+        box.localToGlobal(box.size.bottomRight(Offset.zero), ancestor: overlay),
+      ),
+      Offset.zero & overlay.size,
+    );
+
+    // Menu paints in Flutter; companion WebKit would cover it. Keep a lock
+    // through edit so lifecycle `resumed` cannot re-show the page.
+    if (_useDesktopEngine) {
+      await AppDesktopBrowser.beginOverlay();
+    }
+    if (!mounted || !buttonContext.mounted) {
+      if (_useDesktopEngine) {
+        await AppDesktopBrowser.endOverlay(restore: mounted && _routeVisible);
+      }
+      return;
+    }
+    _BookmarkMenuChoice? choice;
+    try {
+      choice = await showMenu<_BookmarkMenuChoice>(
+        context: buttonContext,
+        position: position,
+        constraints: const BoxConstraints(minWidth: 280, maxWidth: 360),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+        items: [
+          if (bookmarks.isEmpty)
+            const PopupMenuItem<_BookmarkMenuChoice>(
+              enabled: false,
+              child: Text('No bookmarks yet'),
+            )
+          else
+            for (final b in bookmarks)
+              PopupMenuItem<_BookmarkMenuChoice>(
+                value: _BookmarkMenuChoice.open(b),
+                child: Builder(
+                  builder: (menuContext) {
+                    final muted =
+                        Theme.of(menuContext).colorScheme.onSurfaceVariant;
+                    return Row(
+                      children: [
+                        _BookmarkFavicon(
+                          pageUrl: b.url,
+                          faviconUrl: b.faviconUrl,
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Text(
+                            b.title,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                        IconButton(
+                          tooltip: 'Edit',
+                          visualDensity: VisualDensity.compact,
+                          padding: EdgeInsets.zero,
+                          constraints: const BoxConstraints(
+                            minWidth: 30,
+                            minHeight: 30,
+                          ),
+                          onPressed: () => Navigator.pop(
+                            menuContext,
+                            _BookmarkMenuChoice.edit(b),
+                          ),
+                          icon: Icon(
+                            Icons.edit_outlined,
+                            size: 16,
+                            color: muted,
+                          ),
+                        ),
+                        IconButton(
+                          tooltip: 'Remove',
+                          visualDensity: VisualDensity.compact,
+                          padding: EdgeInsets.zero,
+                          constraints: const BoxConstraints(
+                            minWidth: 30,
+                            minHeight: 30,
+                          ),
+                          onPressed: () => Navigator.pop(
+                            menuContext,
+                            _BookmarkMenuChoice.remove(b),
+                          ),
+                          icon: Icon(
+                            Icons.close_rounded,
+                            size: 16,
+                            color: muted,
+                          ),
+                        ),
+                      ],
+                    );
+                  },
+                ),
+              ),
+        ],
+      );
+    } finally {
+      // Keep the lock if we are about to open the edit dialog; otherwise
+      // restore the page under the menu.
+      final keepLocked = _useDesktopEngine &&
+          choice != null &&
+          choice.kind == _BookmarkMenuKind.edit;
+      if (_useDesktopEngine && !keepLocked) {
+        await AppDesktopBrowser.endOverlay(
+          restore: mounted && _routeVisible && _inAppMediaUrl == null,
+        );
+        if (mounted && _routeVisible && _inAppMediaUrl == null) {
+          _scheduleDock();
+        }
+      }
+    }
+
+    if (!mounted || choice == null) return;
+    switch (choice.kind) {
+      case _BookmarkMenuKind.open:
+        await _openBookmark(choice.bookmark);
+      case _BookmarkMenuKind.edit:
+        await _editBookmark(choice.bookmark, overlayAlreadyHeld: true);
+      case _BookmarkMenuKind.remove:
+        await _removeBookmark(choice.bookmark);
+    }
+  }
+
+  Future<void> _editBookmark(
+    BrowserBookmark bookmark, {
+    bool overlayAlreadyHeld = false,
+  }) async {
+    final initialUrl = _canonicalPageUrl(
+          bookmark.url,
+          fallbackTitle: bookmark.title,
+        ) ??
+        bookmark.url;
+
+    // Companion WebKit sits above Flutter. hide() alone is not enough:
+    // AppLifecycleState.resumed / activateTab re-show the surface immediately.
+    if (_useDesktopEngine && !overlayAlreadyHeld) {
+      await AppDesktopBrowser.beginOverlay();
+    }
+    _EditedBookmark? result;
+    try {
+      if (!mounted) return;
+      // Let GTK finish gtk_widget_hide before the dialog paints.
+      await Future<void>.delayed(const Duration(milliseconds: 32));
+      if (!mounted) return;
+      result = await showDialog<_EditedBookmark>(
+        context: context,
+        useRootNavigator: true,
+        barrierDismissible: true,
+        builder: (context) => _EditBookmarkDialog(
+          initialTitle: bookmark.title,
+          initialUrl: initialUrl,
+        ),
+      );
+    } finally {
+      if (_useDesktopEngine) {
+        await AppDesktopBrowser.endOverlay(
+          restore: mounted && _routeVisible && _inAppMediaUrl == null,
+        );
+        if (mounted && _routeVisible && _inAppMediaUrl == null) {
+          _scheduleDock();
+        }
+      }
+    }
+    if (result == null || !mounted) return;
+
+    final engine = ref.read(browserSearchEngineProvider).valueOrNull ??
+        BrowserSearchEngine.google;
+    final normalized = AppLinkOpener.resolveOmnibox(
+      result.url,
+      searchUrlTemplate: engine.searchUrlTemplate,
+    );
+    final pageUrl =
+        _canonicalPageUrl(normalized, fallbackTitle: result.title) ??
+            normalized;
+    if (pageUrl.trim().isEmpty) {
+      AppSnackBar.show(context, 'Enter a valid URL');
+      return;
+    }
+
+    final update = await ref.read(browserBookmarkRepositoryProvider).update(
+          id: bookmark.id,
+          title:
+              result.title.trim().isEmpty ? _hostLabel(pageUrl) : result.title.trim(),
+          url: pageUrl,
+          faviconUrl: _BookmarkFavicon.urlFor(pageUrl),
+        );
+    if (!mounted) return;
+    update.when(
+      onSuccess: (_) => AppSnackBar.show(context, 'Bookmark updated'),
+      onFailure: (f) => AppSnackBar.show(context, f.message),
+    );
   }
 
   Future<void> _openExternal() async {
@@ -861,7 +1138,7 @@ class _BrowserPageState extends ConsumerState<BrowserPage>
     // as background hides the page and steals the text cursor (blink loop).
     if (!_useDesktopEngine) return;
     if (state == AppLifecycleState.resumed) {
-      if (_inAppMediaUrl != null) return;
+      if (_inAppMediaUrl != null || AppDesktopBrowser.overlayLocked) return;
       unawaited(AppDesktopBrowser.show());
       _scheduleDock();
     }
@@ -900,6 +1177,45 @@ class _BrowserPageState extends ConsumerState<BrowserPage>
     if (uri.host.isNotEmpty) return uri.host;
     if (uri.scheme == 'file') return 'Local file';
     return 'New Tab';
+  }
+
+  /// Google account / One Tap / app widgets that briefly steal the top frame.
+  static bool _isTransientGoogleChromeUrl(String url) {
+    final uri = Uri.tryParse(url.trim());
+    if (uri == null) return false;
+    final host = uri.host.toLowerCase();
+    if (host == 'ogs.google.com') return true;
+    if (host == 'accounts.google.com') {
+      final path = uri.path.toLowerCase();
+      return path.contains('accountchooser') ||
+          path.contains('signin') ||
+          path.contains('servicelogin') ||
+          path.contains('o/oauth2');
+    }
+    return false;
+  }
+
+  /// Real page URL for bookmarks / navigation — never ogs.google.com widgets.
+  static String? _canonicalPageUrl(String url, {String? fallbackTitle}) {
+    final trimmed = url.trim();
+    if (trimmed.isEmpty) return null;
+    if (!_isTransientGoogleChromeUrl(trimmed)) {
+      return trimmed;
+    }
+    final uri = Uri.tryParse(trimmed);
+    final origin = uri?.queryParameters['origin']?.trim();
+    if (origin != null &&
+        origin.isNotEmpty &&
+        !_isTransientGoogleChromeUrl(origin)) {
+      return origin;
+    }
+    final title = fallbackTitle?.trim() ?? '';
+    if (title.contains('.') &&
+        !title.contains(' ') &&
+        !title.contains('://')) {
+      return 'https://$title';
+    }
+    return null;
   }
 
   @override
@@ -1064,6 +1380,22 @@ class _BrowserPageState extends ConsumerState<BrowserPage>
                               color: isBookmarked ? AppColors.warning : null,
                             ),
                           ),
+                          Builder(
+                            builder: (buttonContext) {
+                              return IconButton(
+                                tooltip: 'Bookmarks',
+                                onPressed: () => unawaited(
+                                  _showBookmarksMenu(buttonContext),
+                                ),
+                                icon: Badge(
+                                  isLabelVisible: bookmarks.isNotEmpty,
+                                  smallSize: 8,
+                                  backgroundColor: AppColors.brand,
+                                  child: const Icon(Icons.bookmarks_outlined),
+                                ),
+                              );
+                            },
+                          ),
                           IconButton(
                             tooltip: 'Fullscreen (F11)',
                             onPressed: () => unawaited(_toggleFullscreen()),
@@ -1130,45 +1462,6 @@ class _BrowserPageState extends ConsumerState<BrowserPage>
                             icon: const Icon(Icons.more_vert_rounded),
                           ),
                         ],
-                      ),
-                    ),
-                    if (bookmarks.isNotEmpty)
-                      SizedBox(
-                        height: 36,
-                        child: ListView.separated(
-                          padding: const EdgeInsets.fromLTRB(12, 0, 12, 6),
-                          scrollDirection: Axis.horizontal,
-                          itemCount: bookmarks.length,
-                          separatorBuilder: (_, _) => const SizedBox(width: 6),
-                          itemBuilder: (context, index) {
-                            final b = bookmarks[index];
-                            return ActionChip(
-                              visualDensity: VisualDensity.compact,
-                              label: Text(
-                                b.title,
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                              onPressed: () => _submitOmnibox(b.url),
-                            );
-                          },
-                        ),
-                      ),
-                    Padding(
-                      padding: const EdgeInsets.fromLTRB(56, 0, 16, 6),
-                      child: Align(
-                        alignment: Alignment.centerLeft,
-                        child: Text(
-                          pageTitle,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: Theme.of(context)
-                              .textTheme
-                              .labelMedium
-                              ?.copyWith(
-                                color: scheme.onSurfaceVariant,
-                                fontWeight: FontWeight.w500,
-                              ),
-                        ),
                       ),
                     ),
                     AnimatedOpacity(
@@ -1284,6 +1577,24 @@ enum _ChromeMenu {
   settings,
 }
 
+enum _BookmarkMenuKind { open, edit, remove }
+
+class _BookmarkMenuChoice {
+  const _BookmarkMenuChoice._(this.kind, this.bookmark);
+
+  const _BookmarkMenuChoice.open(BrowserBookmark bookmark)
+      : this._(_BookmarkMenuKind.open, bookmark);
+
+  const _BookmarkMenuChoice.edit(BrowserBookmark bookmark)
+      : this._(_BookmarkMenuKind.edit, bookmark);
+
+  const _BookmarkMenuChoice.remove(BrowserBookmark bookmark)
+      : this._(_BookmarkMenuKind.remove, bookmark);
+
+  final _BookmarkMenuKind kind;
+  final BrowserBookmark bookmark;
+}
+
 class _TabStrip extends StatelessWidget {
   const _TabStrip({
     required this.tabs,
@@ -1342,22 +1653,14 @@ class _TabStrip extends StatelessWidget {
                             children: [
                               if (tab.loading)
                                 const SizedBox(
-                                  width: 12,
-                                  height: 12,
+                                  width: 14,
+                                  height: 14,
                                   child: CircularProgressIndicator(
                                     strokeWidth: 1.5,
                                   ),
                                 )
                               else
-                                Icon(
-                                  Icons.language_rounded,
-                                  size: 14,
-                                  color: selected
-                                      ? AppColors.brand
-                                      : Theme.of(context)
-                                          .colorScheme
-                                          .onSurfaceVariant,
-                                ),
+                                _BookmarkFavicon(pageUrl: tab.url),
                               const SizedBox(width: 8),
                               Expanded(
                                 child: Text(
@@ -1402,6 +1705,146 @@ class _TabStrip extends StatelessWidget {
             icon: const Icon(Icons.add_rounded),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _EditedBookmark {
+  const _EditedBookmark({required this.title, required this.url});
+
+  final String title;
+  final String url;
+}
+
+class _EditBookmarkDialog extends StatefulWidget {
+  const _EditBookmarkDialog({
+    required this.initialTitle,
+    required this.initialUrl,
+  });
+
+  final String initialTitle;
+  final String initialUrl;
+
+  @override
+  State<_EditBookmarkDialog> createState() => _EditBookmarkDialogState();
+}
+
+class _EditBookmarkDialogState extends State<_EditBookmarkDialog> {
+  late final TextEditingController _titleCtrl;
+  late final TextEditingController _urlCtrl;
+
+  @override
+  void initState() {
+    super.initState();
+    _titleCtrl = TextEditingController(text: widget.initialTitle);
+    _urlCtrl = TextEditingController(text: widget.initialUrl);
+  }
+
+  @override
+  void dispose() {
+    _titleCtrl.dispose();
+    _urlCtrl.dispose();
+    super.dispose();
+  }
+
+  void _save() {
+    Navigator.pop(
+      context,
+      _EditedBookmark(title: _titleCtrl.text, url: _urlCtrl.text),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Edit bookmark'),
+      content: SizedBox(
+        width: 420,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: _titleCtrl,
+              autofocus: true,
+              textInputAction: TextInputAction.next,
+              decoration: const InputDecoration(
+                labelText: 'Name',
+                border: OutlineInputBorder(),
+              ),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: _urlCtrl,
+              keyboardType: TextInputType.url,
+              textInputAction: TextInputAction.done,
+              onSubmitted: (_) => _save(),
+              decoration: const InputDecoration(
+                labelText: 'URL',
+                border: OutlineInputBorder(),
+              ),
+            ),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(
+          onPressed: _save,
+          child: const Text('Save'),
+        ),
+      ],
+    );
+  }
+}
+
+class _BookmarkFavicon extends StatelessWidget {
+  const _BookmarkFavicon({
+    required this.pageUrl,
+    this.faviconUrl,
+  });
+
+  final String pageUrl;
+  final String? faviconUrl;
+
+  /// Google's favicon service — works for most sites without needing a crawl.
+  static String? urlFor(String pageUrl) {
+    final uri = Uri.tryParse(pageUrl.trim());
+    final host = uri?.host;
+    if (host == null || host.isEmpty) return null;
+    return 'https://www.google.com/s2/favicons?domain=$host&sz=64';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final url = (faviconUrl != null && faviconUrl!.trim().isNotEmpty)
+        ? faviconUrl!.trim()
+        : urlFor(pageUrl);
+    const size = 18.0;
+    if (url == null) {
+      return Icon(
+        Icons.public_rounded,
+        size: size,
+        color: Theme.of(context).colorScheme.onSurfaceVariant,
+      );
+    }
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(4),
+      child: Image.network(
+        url,
+        width: size,
+        height: size,
+        fit: BoxFit.cover,
+        errorBuilder: (_, _, _) => Icon(
+          Icons.public_rounded,
+          size: size,
+          color: Theme.of(context).colorScheme.onSurfaceVariant,
+        ),
+        // Avoid jank when opening the menu with many bookmarks.
+        gaplessPlayback: true,
       ),
     );
   }

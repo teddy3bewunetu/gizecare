@@ -32,8 +32,8 @@ class NoteEditorPane extends ConsumerStatefulWidget {
 }
 
 class _NoteEditorPaneState extends ConsumerState<NoteEditorPane> {
-  static const _contentPadH = 48.0;
-  static const _contentMaxWidth = 740.0;
+  static const _contentPadH = 28.0;
+  static const _contentMaxWidth = 820.0;
 
   late TextEditingController _titleController;
   late QuillController _quillController;
@@ -544,7 +544,8 @@ class _NoteEditorPaneState extends ConsumerState<NoteEditorPane> {
               ),
             ),
           Expanded(
-            child: Center(
+            child: Align(
+              alignment: Alignment.topLeft,
               child: ConstrainedBox(
                 constraints: const BoxConstraints(maxWidth: _contentMaxWidth),
                 child: Shortcuts(

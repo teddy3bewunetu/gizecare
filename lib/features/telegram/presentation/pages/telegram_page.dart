@@ -4,12 +4,16 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
+import 'package:open_filex/open_filex.dart';
+import 'package:path/path.dart' as p;
+import 'package:path_provider/path_provider.dart';
 
 import 'package:gizecare/core/errors/result.dart';
 import 'package:gizecare/core/platform/app_platform.dart';
 import 'package:gizecare/core/theme/app_colors.dart';
 import 'package:gizecare/core/widgets/app_snackbar.dart';
 import 'package:gizecare/core/widgets/linkable_text.dart';
+import 'package:gizecare/features/documents/domain/document_format.dart';
 import 'package:gizecare/features/documents/presentation/document_reader_dialog.dart';
 import 'package:gizecare/features/telegram/domain/entities/telegram_entities.dart';
 import 'package:gizecare/features/telegram/domain/telegram_config.dart';
@@ -999,23 +1003,103 @@ class _ChatThreadPaneState extends ConsumerState<_ChatThreadPane> {
     super.dispose();
   }
 
-  Future<void> _openDocument(TelegramMessage message) async {
-    AppSnackBar.show(context, 'Opening ${message.documentFileName}…');
+  Future<void> _onDocumentTap(TelegramMessage message) async {
+    final choice = await showTelegramDocumentFileActions(
+      context,
+      fileName: message.documentFileName,
+    );
+    if (choice == null || !mounted) return;
+    switch (choice) {
+      case TelegramDocumentFileAction.open:
+        await _openDocument(message);
+      case TelegramDocumentFileAction.download:
+        await _downloadDocument(message);
+    }
+  }
+
+  Future<String?> _ensureDocumentPath(TelegramMessage message) async {
     final result = await ref.read(telegramRepositoryProvider).ensureMessageMedia(
           message.telegramChatId,
           message.telegramMessageId,
         );
-    if (!mounted) return;
+    if (!mounted) return null;
     switch (result) {
       case Success(:final value):
-        await openDocumentViewer(
-          context,
-          filePath: value,
-          displayName: message.documentFileName,
-        );
+        return value;
       case Err(:final failure):
         AppSnackBar.show(context, failure.message);
+        return null;
     }
+  }
+
+  Future<void> _openDocument(TelegramMessage message) async {
+    AppSnackBar.show(context, 'Opening ${message.documentFileName}…');
+    final path = await _ensureDocumentPath(message);
+    if (path == null || !mounted) return;
+
+    final format = await documentFormatForFile(path);
+    if (!mounted) return;
+    if (format != null) {
+      await openDocumentViewer(
+        context,
+        filePath: path,
+        displayName: message.documentFileName,
+      );
+      return;
+    }
+
+    // Non PDF/EPUB/MD — open with the OS default app.
+    if (Platform.isAndroid || Platform.isIOS) {
+      await OpenFilex.open(path);
+      return;
+    }
+    if (Platform.isLinux) {
+      await Process.run('xdg-open', [path]);
+    } else if (Platform.isMacOS) {
+      await Process.run('open', [path]);
+    } else if (Platform.isWindows) {
+      await Process.run('cmd', ['/c', 'start', '', path]);
+    }
+  }
+
+  Future<void> _downloadDocument(TelegramMessage message) async {
+    AppSnackBar.show(context, 'Downloading ${message.documentFileName}…');
+    final path = await _ensureDocumentPath(message);
+    if (path == null || !mounted) return;
+
+    try {
+      final saved = await _copyToDownloads(
+        sourcePath: path,
+        preferredName: message.documentFileName,
+      );
+      if (!mounted) return;
+      AppSnackBar.show(context, 'Saved to ${saved.path}');
+    } catch (e) {
+      if (!mounted) return;
+      AppSnackBar.show(context, 'Download failed: $e');
+    }
+  }
+
+  Future<File> _copyToDownloads({
+    required String sourcePath,
+    required String preferredName,
+  }) async {
+    final dir = await getDownloadsDirectory() ??
+        await getApplicationDocumentsDirectory();
+    final safeName = preferredName.trim().isEmpty
+        ? p.basename(sourcePath)
+        : preferredName.trim();
+    var dest = File(p.join(dir.path, safeName));
+    if (await dest.exists()) {
+      final stem = p.basenameWithoutExtension(safeName);
+      final ext = p.extension(safeName);
+      var i = 1;
+      do {
+        dest = File(p.join(dir.path, '$stem ($i)$ext'));
+        i++;
+      } while (await dest.exists());
+    }
+    return File(sourcePath).copy(dest.path);
   }
 
   Future<void> _sendText(String text) async {
@@ -1071,6 +1155,10 @@ class _ChatThreadPaneState extends ConsumerState<_ChatThreadPane> {
       case TelegramMessageAction.copy:
         await copyTelegramMessage(message);
         if (mounted) AppSnackBar.show(context, 'Copied');
+      case TelegramMessageAction.openFile:
+        await _openDocument(message);
+      case TelegramMessageAction.downloadFile:
+        await _downloadDocument(message);
       case TelegramMessageAction.edit:
         setState(() {
           _replyTo = null;
@@ -1470,7 +1558,7 @@ class _ChatThreadPaneState extends ConsumerState<_ChatThreadPane> {
                                   )
                               : null,
                           onOpenDocument: msg.hasDocument
-                              ? () => _openDocument(msg)
+                              ? () => _onDocumentTap(msg)
                               : null,
                           onActions: (pos) => _onMessageAction(msg, pos),
                           onReplyTap: msg.replyToMessageId != null
@@ -1805,7 +1893,7 @@ class _MessageBubble extends StatelessWidget {
                                                 : (onOpenDocument == null
                                                     ? 'Unavailable'
                                                     : (message.documentCaption ??
-                                                        'Tap to open')),
+                                                        'Tap to open or download')),
                                             maxLines: 1,
                                             overflow: TextOverflow.ellipsis,
                                             style: Theme.of(context)

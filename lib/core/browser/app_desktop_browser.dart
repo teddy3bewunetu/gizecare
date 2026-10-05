@@ -50,6 +50,9 @@ abstract final class AppDesktopBrowser {
       {};
   static final Map<String, String> _featureActiveTabIds = {};
   static String? _activeTabId;
+  /// When > 0, [show] / [activateTab] must not map companion windows — Flutter
+  /// dialogs/menus sit under the native WebKit surface otherwise.
+  static int _overlayLocks = 0;
   /// Serializes create/activate so rapid feature switches never drop opens.
   static Future<void> _openChain = Future<void>.value();
   static const _uuid = Uuid();
@@ -70,6 +73,22 @@ abstract final class AppDesktopBrowser {
   static bool get hasSession => _tabs.isNotEmpty;
 
   static String? get activeTabId => _activeTabId;
+
+  static bool get overlayLocked => _overlayLocks > 0;
+
+  /// Hide every companion window and keep them hidden until matching
+  /// [endOverlay]. Nested (menu → dialog) is supported via a counter.
+  static Future<void> beginOverlay() async {
+    _overlayLocks++;
+    await hide();
+  }
+
+  static Future<void> endOverlay({bool restore = true}) async {
+    if (_overlayLocks > 0) _overlayLocks--;
+    if (_overlayLocks == 0 && restore) {
+      await show();
+    }
+  }
 
   static String? urlForSession(String sessionKey) => _sessionUrls[sessionKey];
 
@@ -217,6 +236,9 @@ abstract final class AppDesktopBrowser {
       }
 
       webview.launch(url);
+      // Publish the intended URL immediately so Flutter chrome doesn't keep
+      // showing the previous tab's address while WebKit boots.
+      onUrlChanged?.call(sessionKey, url);
       unawaited(
         webview.onClose.then((_) {
           _tabs.remove(sessionKey);
@@ -256,8 +278,9 @@ abstract final class AppDesktopBrowser {
     if (!_tabs.containsKey(tabId)) return;
     _activeTabId = tabId;
     for (final entry in _tabs.entries) {
+      final visible = entry.key == tabId && !overlayLocked;
       try {
-        await entry.value.setWebviewWindowVisibility(entry.key == tabId);
+        await entry.value.setWebviewWindowVisibility(visible);
       } catch (e) {
         debugPrint('AppDesktopBrowser.activateTab visibility: $e');
       }
@@ -332,8 +355,12 @@ abstract final class AppDesktopBrowser {
         onInAppMedia?.call(tabId, url);
         return false;
       }
-      _sessionUrls[tabId] = url;
-      onUrlChanged?.call(tabId, url);
+      // Google account / One Tap widgets often navigate the top frame to
+      // ogs.google.com — allow the request but don't overwrite the omnibox.
+      if (!_isTransientGoogleChromeUrl(url)) {
+        _sessionUrls[tabId] = url;
+        onUrlChanged?.call(tabId, url);
+      }
       return true;
     });
     webview.setOnHistoryChangedCallback((canGoBack, canGoForward) {
@@ -358,14 +385,32 @@ abstract final class AppDesktopBrowser {
         u.contains('youtube-nocookie.com/');
   }
 
+  /// Account chooser / app-launcher widgets that briefly take over the main frame.
+  static bool _isTransientGoogleChromeUrl(String url) {
+    final uri = Uri.tryParse(url.trim());
+    if (uri == null) return false;
+    final host = uri.host.toLowerCase();
+    if (host == 'ogs.google.com') return true;
+    if (host == 'accounts.google.com') {
+      final path = uri.path.toLowerCase();
+      return path.contains('accountchooser') ||
+          path.contains('signin') ||
+          path.contains('servicelogin') ||
+          path.contains('o/oauth2');
+    }
+    return false;
+  }
+
   static Future<void> navigate(String url) async {
     final id = _activeTabId;
     if (id == null) {
-      await openSession(sessionKeyForUrl(url), url, forceNavigate: true);
+      // Never bind omnibox navigations to host:* app sessions — always a fresh tab id.
+      await openSession(newTabId(), url, forceNavigate: true);
       return;
     }
     _sessionUrls[id] = url;
     _tabs[id]?.launch(url);
+    onUrlChanged?.call(id, url);
   }
 
   static Future<void> goBack() async => _tabs[_activeTabId]?.back();
@@ -387,6 +432,7 @@ abstract final class AppDesktopBrowser {
   }
 
   static Future<void> show() async {
+    if (overlayLocked) return;
     final id = _activeTabId;
     if (id == null) return;
     try {
