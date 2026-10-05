@@ -1,0 +1,28 @@
+name: desktop_webview_window
+description: Show a webview window on your flutter desktop application (GizeCare fork — no Flutter title-bar FlView on Linux).
+version: 0.3.0+gize.1
+homepage: https://github.com/MixinNetwork/flutter-plugins/tree/main/packages/desktop_webview_window
+
+environment:
+  sdk: ">=3.5.0 <4.0.0"
+  flutter: ">=2.5.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+  path: ^1.8.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+
+flutter:
+  plugin:
+    platforms:
+      macos:
+        pluginClass: DesktopWebviewWindowPlugin
+      windows:
+        pluginClass: DesktopWebviewWindowPlugin
+      linux:
+        pluginClass: DesktopWebviewWindowPlugin

@@ -13,6 +13,32 @@ set(APPLICATION_ID "com.gizecare.gizecare")
 # versions of CMake.
 cmake_policy(SET CMP0063 NEW)
 
+# ---------------------------------------------------------------------------
+# Optional local WebKitGTK (in-app browser) without system -dev packages.
+# Prefer: sudo apt install libwebkit2gtk-4.1-dev
+# Fallback: $HOME/.local/webkit-pc + $HOME/.local/webkit-prefix (see README)
+# ---------------------------------------------------------------------------
+if(DEFINED ENV{HOME})
+  set(_gize_webkit_pc "$ENV{HOME}/.local/webkit-pc")
+  set(_gize_webkit_lib "$ENV{HOME}/.local/webkit-prefix/usr/lib/x86_64-linux-gnu")
+  if(EXISTS "${_gize_webkit_pc}/webkit2gtk-4.1.pc")
+    if(DEFINED ENV{PKG_CONFIG_PATH} AND NOT "$ENV{PKG_CONFIG_PATH}" STREQUAL "")
+      set(ENV{PKG_CONFIG_PATH} "${_gize_webkit_pc}:$ENV{PKG_CONFIG_PATH}")
+    else()
+      set(ENV{PKG_CONFIG_PATH} "${_gize_webkit_pc}")
+    endif()
+    message(STATUS "GizeCare: using local WebKitGTK pkg-config at ${_gize_webkit_pc}")
+  endif()
+  if(EXISTS "${_gize_webkit_lib}/libwebkit2gtk-4.1.so")
+    link_directories(BEFORE "${_gize_webkit_lib}")
+    if(DEFINED ENV{LIBRARY_PATH} AND NOT "$ENV{LIBRARY_PATH}" STREQUAL "")
+      set(ENV{LIBRARY_PATH} "${_gize_webkit_lib}:$ENV{LIBRARY_PATH}")
+    else()
+      set(ENV{LIBRARY_PATH} "${_gize_webkit_lib}")
+    endif()
+  endif()
+endif()
+
 # Load bundled libraries from the lib/ directory relative to the binary.
 set(CMAKE_INSTALL_RPATH "$ORIGIN/lib")
 
@@ -79,9 +105,9 @@ include(flutter/generated_plugins.cmake)
 # By default, "installing" just makes a relocatable bundle in the build
 # directory.
 set(BUILD_BUNDLE_DIR "${PROJECT_BINARY_DIR}/bundle")
-if(CMAKE_INSTALL_PREFIX_INITIALIZED_TO_DEFAULT)
-  set(CMAKE_INSTALL_PREFIX "${BUILD_BUNDLE_DIR}" CACHE PATH "..." FORCE)
-endif()
+# Always force the relocatable bundle path. A polluted CMake cache can leave
+# CMAKE_INSTALL_PREFIX at /usr/local and fail install with Permission denied.
+set(CMAKE_INSTALL_PREFIX "${BUILD_BUNDLE_DIR}" CACHE PATH "..." FORCE)
 
 # Start with a clean build bundle directory every time.
 install(CODE "
@@ -107,10 +133,13 @@ foreach(bundled_library ${PLUGIN_BUNDLED_LIBRARIES})
 endforeach(bundled_library)
 
 # Copy the native assets provided by the build.dart from all packages.
+# Skip when the directory is absent (e.g. after a clean / snap-only build).
 set(NATIVE_ASSETS_DIR "${PROJECT_BUILD_DIR}native_assets/linux/")
-install(DIRECTORY "${NATIVE_ASSETS_DIR}"
-   DESTINATION "${INSTALL_BUNDLE_LIB_DIR}"
-   COMPONENT Runtime)
+if(EXISTS "${NATIVE_ASSETS_DIR}")
+  install(DIRECTORY "${NATIVE_ASSETS_DIR}"
+     DESTINATION "${INSTALL_BUNDLE_LIB_DIR}"
+     COMPONENT Runtime)
+endif()
 
 # Fully re-copy the assets directory on each build to avoid having stale files
 # from a previous install.

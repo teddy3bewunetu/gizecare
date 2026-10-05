@@ -44,6 +44,10 @@ part 'app_database.g.dart';
     SlackAccounts,
     SlackConversations,
     SlackMessages,
+    BrowserBookmarks,
+    BrowserHistoryEntries,
+    SystemMetricSamples,
+    FeatureUsageSessions,
   ],
 )
 class AppDatabase extends _$AppDatabase {
@@ -53,7 +57,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.memory() : super(NativeDatabase.memory());
 
   @override
-  int get schemaVersion => 15;
+  int get schemaVersion => 22;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -214,6 +218,67 @@ class AppDatabase extends _$AppDatabase {
               "WHERE files_json IS NULL OR files_json = ''",
             );
           }
+          if (from < 16) {
+            await _createTableIfMissing(m, browserBookmarks);
+          }
+          if (from < 17) {
+            await _createTableIfMissing(m, systemMetricSamples);
+          }
+          if (from < 18) {
+            await _createTableIfMissing(m, featureUsageSessions);
+          }
+          if (from < 19) {
+            await _createTableIfMissing(m, featureUsageSessions);
+            await _addColumnIfMissing(
+              m,
+              featureUsageSessions,
+              featureUsageSessions.avgRamPercent,
+            );
+            await _addColumnIfMissing(
+              m,
+              featureUsageSessions,
+              featureUsageSessions.avgCpuPercent,
+            );
+          }
+          if (from < 20) {
+            await _dedupeTelegramMessagesSql();
+            await _ensureTelegramMessageUniqueIndex();
+          }
+          if (from < 21) {
+            await _addColumnIfMissing(
+              m,
+              telegramChats,
+              telegramChats.lastReadOutboxMessageId,
+            );
+          }
+          if (from < 22) {
+            await _createTableIfMissing(m, browserHistoryEntries);
+          }
+        },
+        beforeOpen: (details) async {
+          // Hot-reload / partial upgrades can leave user_version ahead of DDL.
+          final m = Migrator(this);
+          await _createTableIfMissing(m, browserBookmarks);
+          await _createTableIfMissing(m, browserHistoryEntries);
+          await _createTableIfMissing(m, systemMetricSamples);
+          await _createTableIfMissing(m, featureUsageSessions);
+          await _addColumnIfMissing(
+            m,
+            featureUsageSessions,
+            featureUsageSessions.avgRamPercent,
+          );
+          await _addColumnIfMissing(
+            m,
+            featureUsageSessions,
+            featureUsageSessions.avgCpuPercent,
+          );
+          await _addColumnIfMissing(
+            m,
+            telegramChats,
+            telegramChats.lastReadOutboxMessageId,
+          );
+          await _dedupeTelegramMessagesSql();
+          await _ensureTelegramMessageUniqueIndex();
         },
       );
 
@@ -258,6 +323,27 @@ class AppDatabase extends _$AppDatabase {
     if (!await _tableExists(table.actualTableName)) {
       await m.createTable(table);
     }
+  }
+
+  Future<void> _dedupeTelegramMessagesSql() async {
+    if (!await _tableExists('telegram_messages')) return;
+    // Keep one row per Telegram message id (prefer arbitrary MIN(id)).
+    await customStatement('''
+DELETE FROM telegram_messages
+WHERE id NOT IN (
+  SELECT MIN(id)
+  FROM telegram_messages
+  GROUP BY account_id, telegram_chat_id, telegram_message_id
+)
+''');
+  }
+
+  Future<void> _ensureTelegramMessageUniqueIndex() async {
+    if (!await _tableExists('telegram_messages')) return;
+    await customStatement(
+      'CREATE UNIQUE INDEX IF NOT EXISTS telegram_messages_tg_uidx '
+      'ON telegram_messages (account_id, telegram_chat_id, telegram_message_id)',
+    );
   }
 
   Future<void> _addColumnIfMissing(

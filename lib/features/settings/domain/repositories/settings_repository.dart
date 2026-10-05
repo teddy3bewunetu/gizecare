@@ -30,4 +30,5 @@ abstract final class SettingKeys {
   static const stopwatchActiveSessionId = 'stopwatch_active_session_id';
   static const alarmSoundId = 'alarm_sound_id';
   static const documentBrowsingHistory = 'document_browsing_history';
+  static const browserSearchEngine = 'browser_search_engine';
 }

@@ -1,11 +1,13 @@
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:flutter/material.dart';
 import 'package:flutter_quill/flutter_quill.dart';
 import 'package:googleapis/gmail/v1.dart' as gmail;
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
-import 'package:url_launcher/url_launcher.dart';
+
+import 'package:gizecare/core/browser/app_link_opener.dart';
 
 /// Helpers for Gmail HTML bodies (read + compose).
 abstract final class GmailHtml {
@@ -79,15 +81,29 @@ abstract final class GmailHtml {
 ''';
   }
 
-  /// Write HTML to a temp file and open it in the system browser.
+  /// Write HTML to a temp file and open it in the in-app browser.
+  static Future<void> openInAppBrowser(BuildContext context, String html) async {
+    final dir = await getTemporaryDirectory();
+    final file = File(
+      p.join(dir.path, 'gizecare_mail_${DateTime.now().millisecondsSinceEpoch}.html'),
+    );
+    await file.writeAsString(wrapForViewer(html, darkChrome: false), flush: true);
+    if (!context.mounted) return;
+    await AppLinkOpener.openUri(
+      context,
+      Uri.file(file.path),
+      title: 'Original message',
+    );
+  }
+
+  /// Legacy alias — prefers the in-app browser when a [context] is available.
   static Future<void> openInSystemBrowser(String html) async {
     final dir = await getTemporaryDirectory();
     final file = File(
       p.join(dir.path, 'gizecare_mail_${DateTime.now().millisecondsSinceEpoch}.html'),
     );
     await file.writeAsString(wrapForViewer(html, darkChrome: false), flush: true);
-    final uri = Uri.file(file.path);
-    await launchUrl(uri, mode: LaunchMode.externalApplication);
+    await AppLinkOpener.openExternal(Uri.file(file.path).toString());
   }
 
   static String _stripCssAtRules(String css) {

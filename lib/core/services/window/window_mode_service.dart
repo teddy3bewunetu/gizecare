@@ -4,6 +4,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart' show Offset, Size;
 import 'package:window_manager/window_manager.dart';
 
+import 'package:gizecare/core/browser/app_desktop_browser.dart';
 import 'package:gizecare/core/constants/app_constants.dart';
 import 'package:gizecare/core/services/app_logger.dart';
 import 'package:gizecare/features/settings/domain/repositories/settings_repository.dart';
@@ -54,6 +55,9 @@ class WindowModeService {
 
   Future<void> enterCompact({bool saveCurrentAsFull = true}) async {
     try {
+      if (AppDesktopBrowser.isAvailable) {
+        await AppDesktopBrowser.hide();
+      }
       if (saveCurrentAsFull && _mode == WindowMode.full) {
         await _saveGeometry(SettingKeys.fullWindowState);
       }
@@ -132,6 +136,9 @@ class WindowModeService {
   }
 
   Future<void> hideToTray() async {
+    if (AppDesktopBrowser.isAvailable) {
+      await AppDesktopBrowser.hide();
+    }
     await saveCurrentGeometry();
     await windowManager.hide();
   }

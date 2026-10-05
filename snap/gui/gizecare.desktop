@@ -1,0 +1,10 @@
+[Desktop Entry]
+Name=GizeCare
+Comment=Your workday, one place — notes, tasks, calendar, and apps
+Exec=gizecare %U
+Icon=${SNAP}/meta/gui/gizecare.png
+Terminal=false
+Type=Application
+Categories=Office;ProjectManagement;Calendar;
+Keywords=notes;tasks;tracker;calendar;telegram;gmail;
+StartupWMClass=gizecare

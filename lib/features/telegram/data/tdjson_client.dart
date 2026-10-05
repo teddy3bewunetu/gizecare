@@ -284,6 +284,17 @@ class TdjsonClient {
     });
   }
 
+  Future<Map<String, dynamic>> getMessageResult({
+    required int chatId,
+    required int messageId,
+  }) {
+    return sendForResult({
+      '@type': 'getMessage',
+      'chat_id': chatId,
+      'message_id': messageId,
+    });
+  }
+
   /// Downloads a file and waits until TDLib returns the completed [file].
   Future<String?> downloadFilePath(int fileId, {int priority = 32}) async {
     final result = await sendForResult({
@@ -597,58 +608,268 @@ class TdjsonClient {
     send({'@type': 'openChat', 'chat_id': chatId});
   }
 
-  Future<void> sendDocumentMessage({
+  Future<Map<String, dynamic>> sendDocumentMessage({
     required int chatId,
     required String filePath,
     String? caption,
   }) async {
-    final result = await sendForResult({
-      '@type': 'sendMessage',
-      'chat_id': chatId,
-      'input_message_content': {
-        '@type': 'inputMessageDocument',
-        'document': {
-          '@type': 'inputFileLocal',
-          'path': filePath,
-        },
-        if (caption != null && caption.isNotEmpty)
-          'caption': {
-            '@type': 'formattedText',
-            'text': caption,
-            'entities': <Map<String, dynamic>>[],
+    final path = await _stageReadableFile(filePath);
+    // TDLib 1.8.65+: inputMessageDocument.document is inputDocument, which
+    // wraps InputFile. Passing inputFileLocal directly → "InputFile is not specified".
+    final result = await sendForResult(
+      {
+        '@type': 'sendMessage',
+        'chat_id': chatId,
+        'input_message_content': {
+          '@type': 'inputMessageDocument',
+          'document': {
+            '@type': 'inputDocument',
+            'document': {
+              '@type': 'inputFileLocal',
+              'path': path,
+            },
+            'disable_content_type_detection': false,
           },
+          if (caption != null && caption.isNotEmpty)
+            'caption': {
+              '@type': 'formattedText',
+              'text': caption,
+              'entities': <Map<String, dynamic>>[],
+            },
+        },
       },
-    });
+      timeout: const Duration(minutes: 3),
+    );
     if (result['@type'] == 'error') {
       throw StateError(result['message'] as String? ?? 'File send failed');
     }
+    return result;
   }
 
-  Future<void> sendVoiceNoteMessage({
+  Future<Map<String, dynamic>> sendPhotoMessage({
+    required int chatId,
+    required String filePath,
+    String? caption,
+  }) async {
+    final path = await _stageReadableFile(filePath);
+    // TDLib 1.8.65+: inputMessagePhoto.photo is inputPhoto (wrapper).
+    final result = await sendForResult(
+      {
+        '@type': 'sendMessage',
+        'chat_id': chatId,
+        'input_message_content': {
+          '@type': 'inputMessagePhoto',
+          'photo': {
+            '@type': 'inputPhoto',
+            'photo': {
+              '@type': 'inputFileLocal',
+              'path': path,
+            },
+            'added_sticker_file_ids': <int>[],
+            'width': 0,
+            'height': 0,
+          },
+          if (caption != null && caption.isNotEmpty)
+            'caption': {
+              '@type': 'formattedText',
+              'text': caption,
+              'entities': <Map<String, dynamic>>[],
+            },
+        },
+      },
+      timeout: const Duration(minutes: 3),
+    );
+    if (result['@type'] == 'error') {
+      throw StateError(result['message'] as String? ?? 'Photo upload failed');
+    }
+    return result;
+  }
+
+  Future<Map<String, dynamic>> sendVoiceNoteMessage({
     required int chatId,
     required String filePath,
     required int durationSeconds,
   }) async {
     final oggPath = await _ensureOggOpus(filePath);
-    final result = await sendForResult({
-      '@type': 'sendMessage',
-      'chat_id': chatId,
-      'input_message_content': {
-        '@type': 'inputMessageVoiceNote',
-        'voice_note': {
-          '@type': 'inputFileLocal',
-          'path': oggPath,
+    final path = await _stageReadableFile(oggPath);
+    // TDLib 1.8.65+: inputMessageVoiceNote.voice_note is inputVoiceNote.
+    final result = await sendForResult(
+      {
+        '@type': 'sendMessage',
+        'chat_id': chatId,
+        'input_message_content': {
+          '@type': 'inputMessageVoiceNote',
+          'voice_note': {
+            '@type': 'inputVoiceNote',
+            'voice_note': {
+              '@type': 'inputFileLocal',
+              'path': path,
+            },
+            'duration': durationSeconds.clamp(1, 3600),
+            // TDLib expects base64 waveform bytes (5-bit samples). Dummy mid bars.
+            'waveform': base64Encode(
+              List<int>.generate(63, (i) => 15 + (i * 7) % 20),
+            ),
+          },
         },
-        'duration': durationSeconds.clamp(1, 3600),
-        // TDLib expects base64 waveform bytes (5-bit samples). Dummy mid bars.
-        'waveform': base64Encode(
-          List<int>.generate(63, (i) => 15 + (i * 7) % 20),
-        ),
       },
-    });
+      timeout: const Duration(minutes: 2),
+    );
     if (result['@type'] == 'error') {
       throw StateError(result['message'] as String? ?? 'Voice send failed');
     }
+    return result;
+  }
+
+  /// Waits until [sendResult] finishes uploading/sending.
+  ///
+  /// [onProgress] receives 0.0–1.0 while TDLib reports upload progress.
+  Future<void> waitForOutgoingSend(
+    Map<String, dynamic> sendResult, {
+    String label = 'Send failed',
+    void Function(double progress)? onProgress,
+  }) =>
+      _ensureOutgoingSendFinished(
+        sendResult,
+        label: label,
+        onProgress: onProgress,
+      );
+
+  /// Copy into app cache so TDLib can always open the path (portals / mounts).
+  Future<String> _stageReadableFile(String filePath) async {
+    final src = File(filePath);
+    if (!await src.exists()) {
+      throw StateError('File not found: $filePath');
+    }
+    final len = await src.length();
+    if (len <= 0) {
+      throw StateError('File is empty');
+    }
+    // Already under our temp / support dirs — reuse.
+    final normalized = p.normalize(src.absolute.path);
+    final tmpRoot = p.normalize((await getTemporaryDirectory()).path);
+    final supportRoot =
+        p.normalize((await getApplicationSupportDirectory()).path);
+    if (normalized.startsWith(tmpRoot) ||
+        normalized.startsWith(supportRoot)) {
+      return normalized;
+    }
+
+    final destDir = Directory(p.join(tmpRoot, 'tg_uploads'));
+    if (!await destDir.exists()) {
+      await destDir.create(recursive: true);
+    }
+    final safeName =
+        p.basename(normalized).replaceAll(RegExp(r'[^\w.\-]+'), '_');
+    final destPath = p.join(
+      destDir.path,
+      '${DateTime.now().microsecondsSinceEpoch}_$safeName',
+    );
+    await src.copy(destPath);
+    return destPath;
+  }
+
+  /// sendMessage returns a pending message; wait until upload/send finishes.
+  Future<void> _ensureOutgoingSendFinished(
+    Map<String, dynamic> sendResult, {
+    required String label,
+    void Function(double progress)? onProgress,
+  }) async {
+    if (sendResult['@type'] == 'error') {
+      throw StateError(sendResult['message'] as String? ?? label);
+    }
+    final sending = sendResult['sending_state'] as Map<String, dynamic>?;
+    if (sending == null) return;
+    if (sending['@type'] == 'messageSendingStateFailed') {
+      throw StateError(
+        sending['error_message'] as String? ?? label,
+      );
+    }
+    if (sending['@type'] != 'messageSendingStatePending') return;
+
+    final tempId = sendResult['id'];
+    final chatId = sendResult['chat_id'];
+    if (tempId == null || chatId == null) return;
+
+    final uploadFileIds = _outgoingFileIds(sendResult);
+
+    final done = Completer<void>();
+    late final StreamSubscription<Map<String, dynamic>> sub;
+    sub = updates.listen((update) {
+      final type = update['@type'] as String?;
+      if (type == 'updateFile' && onProgress != null) {
+        final file = update['file'] as Map<String, dynamic>?;
+        final fileId = file?['id'];
+        if (fileId != null && uploadFileIds.contains(fileId)) {
+          final remote = file?['remote'] as Map<String, dynamic>?;
+          final size = (file?['expected_size'] as int?) ??
+              (file?['size'] as int?) ??
+              0;
+          final uploaded = remote?['uploaded_size'] as int? ?? 0;
+          if (size > 0) {
+            onProgress((uploaded / size).clamp(0.0, 1.0));
+          } else if (remote?['is_uploading_active'] == true) {
+            onProgress(0.05);
+          }
+        }
+        return;
+      }
+      if (type == 'updateMessageSendSucceeded') {
+        final oldId = update['old_message_id'];
+        if (oldId == tempId && !done.isCompleted) {
+          onProgress?.call(1);
+          done.complete();
+        }
+        return;
+      }
+      if (type == 'updateMessageSendFailed') {
+        final oldId = update['old_message_id'];
+        if (oldId != tempId) return;
+        final error = update['error'] as Map<String, dynamic>?;
+        final message = update['message'] as Map<String, dynamic>?;
+        final state = message?['sending_state'] as Map<String, dynamic>?;
+        final msg = error?['message'] as String? ??
+            state?['error_message'] as String? ??
+            label;
+        if (!done.isCompleted) {
+          done.completeError(StateError(msg));
+        }
+      }
+    });
+    try {
+      await done.future.timeout(const Duration(minutes: 3));
+    } on TimeoutException {
+      throw StateError('Upload timed out');
+    } finally {
+      await sub.cancel();
+    }
+  }
+
+  Set<Object> _outgoingFileIds(Map<String, dynamic> message) {
+    final ids = <Object>{};
+    final content = message['content'] as Map<String, dynamic>?;
+    if (content == null) return ids;
+    final type = content['@type'] as String?;
+    void addFile(Map<String, dynamic>? file) {
+      final id = file?['id'];
+      if (id is Object) ids.add(id);
+    }
+
+    if (type == 'messagePhoto') {
+      final photo = content['photo'] as Map<String, dynamic>?;
+      final sizes = (photo?['sizes'] as List<dynamic>? ?? const [])
+          .whereType<Map>();
+      for (final s in sizes) {
+        addFile(Map<String, dynamic>.from(s)['photo'] as Map<String, dynamic>?);
+      }
+    } else if (type == 'messageDocument') {
+      final doc = content['document'] as Map<String, dynamic>?;
+      addFile(doc?['document'] as Map<String, dynamic>?);
+    } else if (type == 'messageVoiceNote') {
+      final vn = content['voice_note'] as Map<String, dynamic>?;
+      addFile(vn?['voice'] as Map<String, dynamic>?);
+    }
+    return ids;
   }
 
   /// Convert WAV/other to OGG Opus for [inputMessageVoiceNote].

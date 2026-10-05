@@ -8,6 +8,7 @@ import 'package:gizecare/core/database/sqlite_setup.dart';
 import 'package:gizecare/core/platform/app_platform.dart';
 import 'package:gizecare/core/services/app_logger.dart';
 import 'package:gizecare/core/services/desktop/linux_desktop_integration.dart';
+import 'package:media_kit/media_kit.dart';
 import 'package:pdfrx/pdfrx.dart';
 import 'package:window_manager/window_manager.dart';
 
@@ -17,6 +18,7 @@ import 'package:window_manager/window_manager.dart';
 /// Compact vs full geometry is applied after settings load in [_AppBootstrap].
 Future<void> bootstrap() async {
   WidgetsFlutterBinding.ensureInitialized();
+  MediaKit.ensureInitialized();
   // Linux/desktop uses native PDFium; WASM is web-only — silence debug noise.
   await pdfrxFlutterInitialize(dismissPdfiumWasmWarnings: true);
   await loadAppEnv();
@@ -29,17 +31,18 @@ Future<void> bootstrap() async {
       size: Size(380, 720),
       minimumSize: Size(320, 560),
       center: true,
-      backgroundColor: Colors.transparent,
+      // Opaque: transparent + window_manager races the Linux EGL compositor.
+      backgroundColor: Color(0xFF000000),
       skipTaskbar: false,
       titleBarStyle: TitleBarStyle.normal,
       title: AppConstants.displayName,
     );
 
-    await windowManager.waitUntilReadyToShow(windowOptions, () async {
-      await _applyWindowIcon();
-      await windowManager.show();
-      await windowManager.focus();
-    });
+    // Await readiness, then show — do not fire-and-forget the callback.
+    await windowManager.waitUntilReadyToShow(windowOptions, () async {});
+    await _applyWindowIcon();
+    await windowManager.show();
+    await windowManager.focus();
 
     if (Platform.isLinux) {
       await LinuxDesktopIntegration(

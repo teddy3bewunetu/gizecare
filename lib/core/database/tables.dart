@@ -388,6 +388,8 @@ class TelegramChats extends Table {
   BoolColumn get isAllowed => boolean().withDefault(const Constant(false))();
   DateTimeColumn get lastMessageAt => dateTime().nullable()();
   IntColumn get unreadCount => integer().withDefault(const Constant(0))();
+  /// Highest outgoing message id the peer has read (TDLib last_read_outbox).
+  TextColumn get lastReadOutboxMessageId => text().nullable()();
   /// Local path to downloaded chat avatar (small).
   TextColumn get photoPath => text().nullable()();
   DateTimeColumn get updatedAt => dateTime()();
@@ -476,6 +478,78 @@ class TelegramMessages extends Table {
   BoolColumn get isOutgoing => boolean().withDefault(const Constant(false))();
   BoolColumn get isEdited => boolean().withDefault(const Constant(false))();
   DateTimeColumn get updatedAt => dateTime()();
+
+  @override
+  Set<Column<Object>> get primaryKey => {id};
+
+  @override
+  List<Set<Column<Object>>> get uniqueKeys => [
+        {accountId, telegramChatId, telegramMessageId},
+      ];
+}
+@DataClassName('BrowserBookmarkRow')
+class BrowserBookmarks extends Table {
+  TextColumn get id => text()();
+  TextColumn get title => text().withLength(min: 1, max: 200)();
+  TextColumn get url => text().withLength(min: 1, max: 2000)();
+  TextColumn get faviconUrl => text().nullable()();
+  IntColumn get sortOrder => integer().withDefault(const Constant(0))();
+  DateTimeColumn get createdAt => dateTime()();
+
+  @override
+  Set<Column<Object>> get primaryKey => {id};
+}
+
+/// Visited pages for the in-app browser (Chrome-style history).
+@DataClassName('BrowserHistoryEntryRow')
+class BrowserHistoryEntries extends Table {
+  TextColumn get id => text()();
+  TextColumn get title => text().withLength(min: 1, max: 300)();
+  TextColumn get url => text().withLength(min: 1, max: 2000)();
+  DateTimeColumn get visitedAt => dateTime()();
+  IntColumn get visitCount => integer().withDefault(const Constant(1))();
+
+  @override
+  Set<Column<Object>> get primaryKey => {id};
+}
+
+/// Captured host RAM / CPU / disk samples for the Reports → System tab.
+@DataClassName('SystemMetricSampleRow')
+class SystemMetricSamples extends Table {
+  TextColumn get id => text()();
+  DateTimeColumn get capturedAt => dateTime()();
+  /// Host RAM used, megabytes.
+  IntColumn get ramUsedMb => integer()();
+  IntColumn get ramTotalMb => integer()();
+  /// 0–100 CPU utilization estimate.
+  RealColumn get cpuPercent => real()();
+  /// Root (or primary) volume used / total, megabytes.
+  IntColumn get diskUsedMb => integer()();
+  IntColumn get diskTotalMb => integer()();
+  /// 1-minute load average when available.
+  RealColumn get loadAvg1 => real().nullable()();
+  TextColumn get hostname => text().nullable()();
+  TextColumn get platformLabel => text().nullable()();
+
+  @override
+  Set<Column<Object>> get primaryKey => {id};
+}
+
+/// Closed dwell intervals for in-app features / pages (Reports → System).
+@DataClassName('FeatureUsageSessionRow')
+class FeatureUsageSessions extends Table {
+  TextColumn get id => text()();
+  /// Stable key, e.g. `notes`, `chatgpt`, `gmail`.
+  TextColumn get featureKey => text()();
+  TextColumn get featureLabel => text()();
+  DateTimeColumn get startedAt => dateTime()();
+  DateTimeColumn get endedAt => dateTime()();
+  /// Closed interval length in milliseconds.
+  IntColumn get durationMs => integer()();
+  /// Average host RAM % while this feature was open (0–100).
+  RealColumn get avgRamPercent => real().nullable()();
+  /// Average host CPU % while this feature was open (0–100).
+  RealColumn get avgCpuPercent => real().nullable()();
 
   @override
   Set<Column<Object>> get primaryKey => {id};

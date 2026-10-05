@@ -47,7 +47,53 @@ Future<void> showTelegramImageViewer(BuildContext context, String path) {
   );
 }
 
-enum TelegramMessageAction { reply, copy, edit, delete }
+enum TelegramMessageAction {
+  reply,
+  copy,
+  openFile,
+  downloadFile,
+  edit,
+  delete,
+}
+
+/// Choice after tapping a document attachment.
+enum TelegramDocumentFileAction { open, download }
+
+/// Asks whether to open or download a chat file.
+Future<TelegramDocumentFileAction?> showTelegramDocumentFileActions(
+  BuildContext context, {
+  required String fileName,
+}) {
+  return showDialog<TelegramDocumentFileAction>(
+    context: context,
+    builder: (context) {
+      return AlertDialog(
+        title: Text(
+          fileName,
+          maxLines: 2,
+          overflow: TextOverflow.ellipsis,
+        ),
+        content: const Text('Open with the viewer, or save a copy to Downloads.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () =>
+                Navigator.pop(context, TelegramDocumentFileAction.download),
+            child: const Text('Download'),
+          ),
+          FilledButton(
+            onPressed: () =>
+                Navigator.pop(context, TelegramDocumentFileAction.open),
+            child: const Text('Open'),
+          ),
+        ],
+      );
+    },
+  );
+}
 
 /// Desktop-style context menu at the click position (not a bottom sheet).
 Future<TelegramMessageAction?> showTelegramMessageActions(
@@ -83,6 +129,26 @@ Future<TelegramMessageAction?> showTelegramMessageActions(
           title: Text('Copy'),
         ),
       ),
+      if (message.hasDocument) ...[
+        const PopupMenuItem(
+          value: TelegramMessageAction.openFile,
+          child: ListTile(
+            dense: true,
+            contentPadding: EdgeInsets.zero,
+            leading: Icon(Icons.open_in_new_rounded),
+            title: Text('Open file'),
+          ),
+        ),
+        const PopupMenuItem(
+          value: TelegramMessageAction.downloadFile,
+          child: ListTile(
+            dense: true,
+            contentPadding: EdgeInsets.zero,
+            leading: Icon(Icons.download_rounded),
+            title: Text('Download'),
+          ),
+        ),
+      ],
       if (message.isOutgoing && message.contentType == 'text')
         const PopupMenuItem(
           value: TelegramMessageAction.edit,

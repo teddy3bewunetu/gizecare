@@ -4,10 +4,17 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
+import 'package:open_filex/open_filex.dart';
+import 'package:path/path.dart' as p;
+import 'package:path_provider/path_provider.dart';
 
+import 'package:gizecare/core/errors/result.dart';
 import 'package:gizecare/core/platform/app_platform.dart';
 import 'package:gizecare/core/theme/app_colors.dart';
 import 'package:gizecare/core/widgets/app_snackbar.dart';
+import 'package:gizecare/core/widgets/linkable_text.dart';
+import 'package:gizecare/features/documents/domain/document_format.dart';
+import 'package:gizecare/features/documents/presentation/document_reader_dialog.dart';
 import 'package:gizecare/features/telegram/domain/entities/telegram_entities.dart';
 import 'package:gizecare/features/telegram/domain/telegram_config.dart';
 import 'package:gizecare/features/telegram/presentation/providers/telegram_providers.dart';
@@ -79,12 +86,8 @@ class _TelegramPageState extends ConsumerState<TelegramPage> {
     }
     final ok = await showTelegramConnectDialog(context, ref);
     if (!ok || !mounted) return;
-    final sync = await ref.read(telegramRepositoryProvider).syncChats();
-    if (!mounted) return;
-    sync.when(
-      onSuccess: (_) => showTelegramChatPicker(context, ref),
-      onFailure: (f) => AppSnackBar.show(context, f.message),
-    );
+    unawaited(ref.read(telegramRepositoryProvider).syncChats());
+    await showTelegramChatPicker(context, ref);
   }
 
   Future<void> _disconnect() async {
@@ -100,12 +103,10 @@ class _TelegramPageState extends ConsumerState<TelegramPage> {
   }
 
   Future<void> _syncAndPick() async {
-    final result = await ref.read(telegramRepositoryProvider).syncChats();
+    // Open picker immediately from cache; refresh TDLib chats in the background.
+    unawaited(ref.read(telegramRepositoryProvider).syncChats());
     if (!mounted) return;
-    result.when(
-      onSuccess: (_) => showTelegramChatPicker(context, ref),
-      onFailure: (f) => AppSnackBar.show(context, f.message),
-    );
+    await showTelegramChatPicker(context, ref);
   }
 
   Future<void> _openChat(TelegramChat chat) async {
@@ -829,6 +830,9 @@ class _ChatThreadPaneState extends ConsumerState<_ChatThreadPane> {
   TelegramMessage? _replyTo;
   TelegramMessage? _editing;
   final _listController = ScrollController();
+  /// Stable keys so reply/search jumps can find bubbles (GlobalObjectKey on
+  /// interpolated strings fails because it uses [identical], not ==).
+  final _messageKeys = <String, GlobalKey>{};
   String? _highlightMessageId;
   String? _statusText;
   var _profileLoading = false;
@@ -836,6 +840,78 @@ class _ChatThreadPaneState extends ConsumerState<_ChatThreadPane> {
   final _searchController = TextEditingController();
   List<TelegramMessage> _searchHits = const [];
   var _searchBusy = false;
+
+  GlobalKey _keyForMessage(String telegramMessageId) {
+    return _messageKeys.putIfAbsent(telegramMessageId, GlobalKey.new);
+  }
+
+  void _scheduleClearHighlight(String messageId) {
+    Future<void>.delayed(const Duration(milliseconds: 1200), () {
+      if (mounted && _highlightMessageId == messageId) {
+        setState(() => _highlightMessageId = null);
+      }
+    });
+  }
+
+  Future<void> _jumpToMessage(
+    String messageId,
+    List<TelegramMessage> messages,
+  ) async {
+    final chronoIndex =
+        messages.indexWhere((m) => m.telegramMessageId == messageId);
+    if (chronoIndex < 0) {
+      if (!mounted) return;
+      AppSnackBar.show(context, 'Original message not loaded');
+      return;
+    }
+
+    setState(() => _highlightMessageId = messageId);
+
+    Future<bool> tryEnsureVisible() async {
+      final ctx = _keyForMessage(messageId).currentContext;
+      if (ctx == null || !ctx.mounted) return false;
+      await Scrollable.ensureVisible(
+        ctx,
+        duration: const Duration(milliseconds: 280),
+        curve: Curves.easeOutCubic,
+        alignment: 0.35,
+      );
+      return true;
+    }
+
+    if (await tryEnsureVisible()) {
+      _scheduleClearHighlight(messageId);
+      return;
+    }
+
+    // Off-screen items aren't built yet — scroll near the target first.
+    if (_listController.hasClients) {
+      final listIndex = messages.length - 1 - chronoIndex;
+      final max = _listController.position.maxScrollExtent;
+      final target = messages.length <= 1
+          ? 0.0
+          : (listIndex / (messages.length - 1)) * max;
+      await _listController.animateTo(
+        target.clamp(0.0, max),
+        duration: const Duration(milliseconds: 360),
+        curve: Curves.easeOutCubic,
+      );
+    }
+
+    for (var i = 0; i < 12; i++) {
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+      if (!mounted) return;
+      if (await tryEnsureVisible()) {
+        _scheduleClearHighlight(messageId);
+        return;
+      }
+    }
+
+    if (mounted) {
+      AppSnackBar.show(context, 'Could not scroll to that message');
+    }
+    _scheduleClearHighlight(messageId);
+  }
 
   @override
   void initState() {
@@ -851,6 +927,8 @@ class _ChatThreadPaneState extends ConsumerState<_ChatThreadPane> {
       _searchOpen = false;
       _searchController.clear();
       _searchHits = const [];
+      _messageKeys.clear();
+      _highlightMessageId = null;
       unawaited(_loadStatus());
     }
   }
@@ -921,7 +999,107 @@ class _ChatThreadPaneState extends ConsumerState<_ChatThreadPane> {
   void dispose() {
     _listController.dispose();
     _searchController.dispose();
+    _messageKeys.clear();
     super.dispose();
+  }
+
+  Future<void> _onDocumentTap(TelegramMessage message) async {
+    final choice = await showTelegramDocumentFileActions(
+      context,
+      fileName: message.documentFileName,
+    );
+    if (choice == null || !mounted) return;
+    switch (choice) {
+      case TelegramDocumentFileAction.open:
+        await _openDocument(message);
+      case TelegramDocumentFileAction.download:
+        await _downloadDocument(message);
+    }
+  }
+
+  Future<String?> _ensureDocumentPath(TelegramMessage message) async {
+    final result = await ref.read(telegramRepositoryProvider).ensureMessageMedia(
+          message.telegramChatId,
+          message.telegramMessageId,
+        );
+    if (!mounted) return null;
+    switch (result) {
+      case Success(:final value):
+        return value;
+      case Err(:final failure):
+        AppSnackBar.show(context, failure.message);
+        return null;
+    }
+  }
+
+  Future<void> _openDocument(TelegramMessage message) async {
+    AppSnackBar.show(context, 'Opening ${message.documentFileName}…');
+    final path = await _ensureDocumentPath(message);
+    if (path == null || !mounted) return;
+
+    final format = await documentFormatForFile(path);
+    if (!mounted) return;
+    if (format != null) {
+      await openDocumentViewer(
+        context,
+        filePath: path,
+        displayName: message.documentFileName,
+      );
+      return;
+    }
+
+    // Non PDF/EPUB/MD — open with the OS default app.
+    if (Platform.isAndroid || Platform.isIOS) {
+      await OpenFilex.open(path);
+      return;
+    }
+    if (Platform.isLinux) {
+      await Process.run('xdg-open', [path]);
+    } else if (Platform.isMacOS) {
+      await Process.run('open', [path]);
+    } else if (Platform.isWindows) {
+      await Process.run('cmd', ['/c', 'start', '', path]);
+    }
+  }
+
+  Future<void> _downloadDocument(TelegramMessage message) async {
+    AppSnackBar.show(context, 'Downloading ${message.documentFileName}…');
+    final path = await _ensureDocumentPath(message);
+    if (path == null || !mounted) return;
+
+    try {
+      final saved = await _copyToDownloads(
+        sourcePath: path,
+        preferredName: message.documentFileName,
+      );
+      if (!mounted) return;
+      AppSnackBar.show(context, 'Saved to ${saved.path}');
+    } catch (e) {
+      if (!mounted) return;
+      AppSnackBar.show(context, 'Download failed: $e');
+    }
+  }
+
+  Future<File> _copyToDownloads({
+    required String sourcePath,
+    required String preferredName,
+  }) async {
+    final dir = await getDownloadsDirectory() ??
+        await getApplicationDocumentsDirectory();
+    final safeName = preferredName.trim().isEmpty
+        ? p.basename(sourcePath)
+        : preferredName.trim();
+    var dest = File(p.join(dir.path, safeName));
+    if (await dest.exists()) {
+      final stem = p.basenameWithoutExtension(safeName);
+      final ext = p.extension(safeName);
+      var i = 1;
+      do {
+        dest = File(p.join(dir.path, '$stem ($i)$ext'));
+        i++;
+      } while (await dest.exists());
+    }
+    return File(sourcePath).copy(dest.path);
   }
 
   Future<void> _sendText(String text) async {
@@ -977,6 +1155,10 @@ class _ChatThreadPaneState extends ConsumerState<_ChatThreadPane> {
       case TelegramMessageAction.copy:
         await copyTelegramMessage(message);
         if (mounted) AppSnackBar.show(context, 'Copied');
+      case TelegramMessageAction.openFile:
+        await _openDocument(message);
+      case TelegramMessageAction.downloadFile:
+        await _downloadDocument(message);
       case TelegramMessageAction.edit:
         setState(() {
           _replyTo = null;
@@ -1035,10 +1217,7 @@ class _ChatThreadPaneState extends ConsumerState<_ChatThreadPane> {
           );
       if (!context.mounted) return;
       result.when(
-        onSuccess: (_) {
-          AppSnackBar.show(context, 'File sent');
-          ref.invalidate(telegramMessagesProvider(chat.telegramChatId));
-        },
+        onSuccess: (_) {},
         onFailure: (f) => AppSnackBar.show(context, f.message),
       );
     }
@@ -1051,33 +1230,9 @@ class _ChatThreadPaneState extends ConsumerState<_ChatThreadPane> {
           );
       if (!context.mounted) return;
       result.when(
-        onSuccess: (_) {
-          AppSnackBar.show(context, 'Voice message sent');
-          ref.invalidate(telegramMessagesProvider(chat.telegramChatId));
-        },
+        onSuccess: (_) {},
         onFailure: (f) => AppSnackBar.show(context, f.message),
       );
-    }
-
-    void jumpToReply(String messageId) {
-      final key = GlobalObjectKey('tg-msg-$messageId');
-      final ctx = key.currentContext;
-      if (ctx == null) {
-        AppSnackBar.show(context, 'Original message not loaded');
-        return;
-      }
-      setState(() => _highlightMessageId = messageId);
-      Scrollable.ensureVisible(
-        ctx,
-        duration: const Duration(milliseconds: 280),
-        curve: Curves.easeOutCubic,
-        alignment: 0.35,
-      );
-      Future<void>.delayed(const Duration(milliseconds: 1200), () {
-        if (mounted && _highlightMessageId == messageId) {
-          setState(() => _highlightMessageId = null);
-        }
-      });
     }
 
     return Column(
@@ -1280,7 +1435,17 @@ class _ChatThreadPaneState extends ConsumerState<_ChatThreadPane> {
                             ),
                             subtitle: Text(timeFmt.format(hit.sentAt.toLocal())),
                             onTap: () {
-                              jumpToReply(hit.telegramMessageId);
+                              final list = ref
+                                      .read(
+                                        telegramMessagesProvider(
+                                          chat.telegramChatId,
+                                        ),
+                                      )
+                                      .valueOrNull ??
+                                  const <TelegramMessage>[];
+                              unawaited(
+                                _jumpToMessage(hit.telegramMessageId, list),
+                              );
                             },
                           );
                         },
@@ -1318,14 +1483,22 @@ class _ChatThreadPaneState extends ConsumerState<_ChatThreadPane> {
                     ),
                   );
                 }
+                // reverse:true keeps the newest messages pinned to the bottom
+                // when opening a chat or when new messages arrive.
                 return ListView.builder(
+                  key: ValueKey('thread-${chat.telegramChatId}'),
                   controller: _listController,
+                  reverse: true,
                   padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
                   itemCount: messages.length,
                   itemBuilder: (context, index) {
-                    final msg = messages[index];
-                    final showDate = index == 0 ||
-                        !_sameDay(messages[index - 1].sentAt, msg.sentAt);
+                    final reverseIndex = messages.length - 1 - index;
+                    final msg = messages[reverseIndex];
+                    final older = reverseIndex == 0
+                        ? null
+                        : messages[reverseIndex - 1];
+                    final showDate = older == null ||
+                        !_sameDay(older.sentAt, msg.sentAt);
                     final replied = msg.replyToMessageId == null
                         ? null
                         : messages
@@ -1335,7 +1508,7 @@ class _ChatThreadPaneState extends ConsumerState<_ChatThreadPane> {
                             )
                             .firstOrNull;
                     return Column(
-                      key: GlobalObjectKey('tg-msg-${msg.telegramMessageId}'),
+                      key: _keyForMessage(msg.telegramMessageId),
                       children: [
                         if (showDate)
                           Padding(
@@ -1374,15 +1547,27 @@ class _ChatThreadPaneState extends ConsumerState<_ChatThreadPane> {
                               (replied?.isOutgoing == true ? 'You' : null),
                           replyBody: replied?.text.split('|').first ??
                               msg.replyPreview,
+                          isOutgoingRead: msg.isOutgoing &&
+                              chat.isOutgoingMessageRead(
+                                msg.telegramMessageId,
+                              ),
                           onOpenImage: msg.hasPhoto
                               ? () => showTelegramImageViewer(
                                     context,
                                     msg.mediaPath!,
                                   )
                               : null,
+                          onOpenDocument: msg.hasDocument
+                              ? () => _onDocumentTap(msg)
+                              : null,
                           onActions: (pos) => _onMessageAction(msg, pos),
                           onReplyTap: msg.replyToMessageId != null
-                              ? () => jumpToReply(msg.replyToMessageId!)
+                              ? () => unawaited(
+                                    _jumpToMessage(
+                                      msg.replyToMessageId!,
+                                      messages,
+                                    ),
+                                  )
                               : null,
                         ),
                       ],
@@ -1432,9 +1617,11 @@ class _MessageBubble extends StatelessWidget {
     required this.timeLabel,
     required this.showSender,
     this.highlighted = false,
+    this.isOutgoingRead = false,
     this.replyLabel,
     this.replyBody,
     this.onOpenImage,
+    this.onOpenDocument,
     this.onActions,
     this.onReplyTap,
   });
@@ -1443,9 +1630,11 @@ class _MessageBubble extends StatelessWidget {
   final String timeLabel;
   final bool showSender;
   final bool highlighted;
+  final bool isOutgoingRead;
   final String? replyLabel;
   final String? replyBody;
   final VoidCallback? onOpenImage;
+  final VoidCallback? onOpenDocument;
   final ValueChanged<Offset>? onActions;
   final VoidCallback? onReplyTap;
 
@@ -1491,15 +1680,12 @@ class _MessageBubble extends StatelessWidget {
                 Offset? tapPos;
                 return GestureDetector(
                   behavior: HitTestBehavior.deferToChild,
-                  onTapDown: (d) => tapPos = d.globalPosition,
                   onSecondaryTapDown: (d) => tapPos = d.globalPosition,
                   onLongPressStart: (d) {
                     onActions?.call(d.globalPosition);
                   },
-                  onTap: () {
-                    final p = tapPos;
-                    if (p != null) onActions?.call(p);
-                  },
+                  // Document chips use InkWell; keep menu on long-press / right-click
+                  // so a tap on a file opens the reader instead of the actions menu.
                   onSecondaryTap: () {
                     final p = tapPos;
                     if (p != null) onActions?.call(p);
@@ -1583,7 +1769,7 @@ class _MessageBubble extends StatelessWidget {
                         if (message.hasPhoto) ...[
                           if (message.text.isNotEmpty &&
                               message.text != 'Photo') ...[
-                            Text(
+                            LinkableText(
                               message.text,
                               style: Theme.of(context)
                                   .textTheme
@@ -1596,55 +1782,142 @@ class _MessageBubble extends StatelessWidget {
                             const SizedBox(height: 6),
                           ],
                           GestureDetector(
-                            onTap: onOpenImage,
+                            onTap: message.isSending ? null : onOpenImage,
                             child: ClipRRect(
                               borderRadius: BorderRadius.circular(10),
-                              child: Image.file(
-                                File(message.mediaPath!),
-                                width: 260,
-                                fit: BoxFit.cover,
-                                errorBuilder: (context, error, stackTrace) =>
-                                    Text(
-                                  '📷 Photo unavailable',
-                                  style: TextStyle(
-                                    color: fg.withValues(alpha: 0.7),
+                              child: Stack(
+                                alignment: Alignment.center,
+                                children: [
+                                  Image.file(
+                                    File(message.mediaPath!),
+                                    width: 260,
+                                    fit: BoxFit.cover,
+                                    errorBuilder:
+                                        (context, error, stackTrace) => Text(
+                                      '📷 Photo unavailable',
+                                      style: TextStyle(
+                                        color: fg.withValues(alpha: 0.7),
+                                      ),
+                                    ),
                                   ),
-                                ),
+                                  if (message.isSending)
+                                    _UploadProgressOverlay(
+                                      progress: message.uploadProgress,
+                                    ),
+                                ],
                               ),
                             ),
                           ),
                         ] else if (message.contentType == 'photo')
-                          Text(
+                          LinkableText(
                             message.text.isNotEmpty && message.text != 'Photo'
                                 ? message.text
-                                : '📷 Loading photo…',
+                                : (message.isSending
+                                    ? '📷 Uploading photo…'
+                                    : '📷 Loading photo…'),
                             style: Theme.of(context)
                                 .textTheme
                                 .bodyMedium
                                 ?.copyWith(color: fg),
                           )
                         else if (message.contentType == 'document')
-                          Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Icon(
-                                Icons.insert_drive_file_outlined,
-                                size: 16,
-                                color: fg,
-                              ),
-                              const SizedBox(width: 6),
-                              Flexible(
-                                child: Text(
-                                  message.text.isEmpty
-                                      ? 'Document'
-                                      : message.text,
-                                  style: Theme.of(context)
-                                      .textTheme
-                                      .bodyMedium
-                                      ?.copyWith(color: fg),
+                          Material(
+                            color: Colors.transparent,
+                            child: InkWell(
+                              onTap: message.isSending ? null : onOpenDocument,
+                              borderRadius: BorderRadius.circular(10),
+                              child: Container(
+                                constraints:
+                                    const BoxConstraints(maxWidth: 280),
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 10,
+                                  vertical: 8,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: fg.withValues(alpha: 0.08),
+                                  borderRadius: BorderRadius.circular(10),
+                                  border: Border.all(
+                                    color: fg.withValues(alpha: 0.12),
+                                  ),
+                                ),
+                                child: Row(
+                                  children: [
+                                    if (message.isSending)
+                                      SizedBox(
+                                        width: 28,
+                                        height: 28,
+                                        child: CircularProgressIndicator(
+                                          strokeWidth: 2.5,
+                                          value: message.uploadProgress,
+                                          color: fg,
+                                        ),
+                                      )
+                                    else
+                                      Icon(
+                                        message.documentFileName
+                                                .toLowerCase()
+                                                .endsWith('.pdf')
+                                            ? Icons.picture_as_pdf_rounded
+                                            : Icons.insert_drive_file_outlined,
+                                        size: 28,
+                                        color: message.documentFileName
+                                                .toLowerCase()
+                                                .endsWith('.pdf')
+                                            ? const Color(0xFFE53935)
+                                            : fg,
+                                      ),
+                                    const SizedBox(width: 10),
+                                    Expanded(
+                                      child: Column(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
+                                        children: [
+                                          Text(
+                                            message.documentFileName,
+                                            maxLines: 2,
+                                            overflow: TextOverflow.ellipsis,
+                                            style: Theme.of(context)
+                                                .textTheme
+                                                .bodyMedium
+                                                ?.copyWith(
+                                                  color: fg,
+                                                  fontWeight: FontWeight.w600,
+                                                ),
+                                          ),
+                                          const SizedBox(height: 2),
+                                          Text(
+                                            message.isSending
+                                                ? _uploadLabel(
+                                                    message.uploadProgress,
+                                                  )
+                                                : (onOpenDocument == null
+                                                    ? 'Unavailable'
+                                                    : (message.documentCaption ??
+                                                        'Tap to open or download')),
+                                            maxLines: 1,
+                                            overflow: TextOverflow.ellipsis,
+                                            style: Theme.of(context)
+                                                .textTheme
+                                                .labelSmall
+                                                ?.copyWith(
+                                                  color: fg.withValues(
+                                                    alpha: 0.7,
+                                                  ),
+                                                ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                    if (!message.isSending)
+                                      Icon(
+                                        Icons.chevron_right_rounded,
+                                        size: 20,
+                                        color: fg.withValues(alpha: 0.55),
+                                      ),
+                                  ],
                                 ),
                               ),
-                            ],
+                            ),
                           )
                         else if (message.contentType == 'voice')
                           GestureDetector(
@@ -1657,7 +1930,7 @@ class _MessageBubble extends StatelessWidget {
                             ),
                           )
                         else
-                          Text(
+                          LinkableText(
                             message.text.isEmpty
                                 ? '📎 Attachment'
                                 : message.text,
@@ -1700,10 +1973,18 @@ class _MessageBubble extends StatelessWidget {
                               ),
                               if (isOut) ...[
                                 const SizedBox(width: 4),
-                                const Icon(
-                                  Icons.done_all_rounded,
+                                Icon(
+                                  message.isSending
+                                      ? Icons.schedule_rounded
+                                      : (isOutgoingRead
+                                          ? Icons.done_all_rounded
+                                          : Icons.done_rounded),
                                   size: 14,
-                                  color: AppColors.brandMuted,
+                                  color: message.isSending
+                                      ? fg.withValues(alpha: 0.55)
+                                      : (isOutgoingRead
+                                          ? AppColors.brandMuted
+                                          : fg.withValues(alpha: 0.55)),
                                 ),
                               ],
                             ],
@@ -1715,6 +1996,54 @@ class _MessageBubble extends StatelessWidget {
                 );
               },
             ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+String _uploadLabel(double? progress) {
+  if (progress == null) return 'Uploading…';
+  final pct = (progress * 100).clamp(0, 100).round();
+  return 'Uploading $pct%';
+}
+
+class _UploadProgressOverlay extends StatelessWidget {
+  const _UploadProgressOverlay({this.progress});
+
+  final double? progress;
+
+  @override
+  Widget build(BuildContext context) {
+    return ColoredBox(
+      color: Colors.black45,
+      child: SizedBox(
+        width: 260,
+        height: 160,
+        child: Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              SizedBox(
+                width: 36,
+                height: 36,
+                child: CircularProgressIndicator(
+                  strokeWidth: 3,
+                  value: progress,
+                  color: Colors.white,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                _uploadLabel(progress),
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
           ),
         ),
       ),
