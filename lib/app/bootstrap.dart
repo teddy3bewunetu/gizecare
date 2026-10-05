@@ -31,17 +31,18 @@ Future<void> bootstrap() async {
       size: Size(380, 720),
       minimumSize: Size(320, 560),
       center: true,
-      backgroundColor: Colors.transparent,
+      // Opaque: transparent + window_manager races the Linux EGL compositor.
+      backgroundColor: Color(0xFF000000),
       skipTaskbar: false,
       titleBarStyle: TitleBarStyle.normal,
       title: AppConstants.displayName,
     );
 
-    await windowManager.waitUntilReadyToShow(windowOptions, () async {
-      await _applyWindowIcon();
-      await windowManager.show();
-      await windowManager.focus();
-    });
+    // Await readiness, then show — do not fire-and-forget the callback.
+    await windowManager.waitUntilReadyToShow(windowOptions, () async {});
+    await _applyWindowIcon();
+    await windowManager.show();
+    await windowManager.focus();
 
     if (Platform.isLinux) {
       await LinuxDesktopIntegration(

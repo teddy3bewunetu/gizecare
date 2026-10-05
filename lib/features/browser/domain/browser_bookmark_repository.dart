@@ -16,6 +16,13 @@ abstract class BrowserBookmarkRepository {
     String? faviconUrl,
   });
 
+  Future<Result<BrowserBookmark>> update({
+    required String id,
+    required String title,
+    required String url,
+    String? faviconUrl,
+  });
+
   Future<Result<Unit>> remove(String id);
 
   Future<Result<Unit>> removeByUrl(String url);

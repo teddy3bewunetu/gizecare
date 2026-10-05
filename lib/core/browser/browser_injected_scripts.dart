@@ -1,19 +1,54 @@
 /// Scripts injected into the in-app browser for editor-friendly shortcuts.
 abstract final class BrowserInjectedScripts {
-  /// Keep window.open / target=_blank in the same tab. Related WebKit views
-  /// share a process with the parent and have crashed the Linux companion
-  /// window when YouTube opens a watch URL.
+  /// Keep window.open / target=_blank in the same tab.
+  ///
+  /// Related WebKit views share a process with the parent and have crashed
+  /// the Linux companion window (YouTube, Google OAuth popups). OAuth flows
+  /// that open `about:blank` then set `popup.location` get a fake window
+  /// whose location redirects this same tab — no related WebView.
   static const sameWindowNavigation = r'''
 (function () {
   if (window.__gizeCareSameWindowNav) return;
   window.__gizeCareSameWindowNav = true;
 
+  function fakePopup() {
+    var closed = false;
+    var loc = {
+      assign: function (u) {
+        if (u) window.location.assign(u);
+      },
+      replace: function (u) {
+        if (u) window.location.replace(u);
+      },
+      reload: function () { window.location.reload(); },
+      toString: function () { return window.location.href; }
+    };
+    Object.defineProperty(loc, 'href', {
+      get: function () { return window.location.href; },
+      set: function (u) { if (u) window.location.assign(u); },
+      configurable: true
+    });
+    return {
+      closed: false,
+      close: function () { closed = true; this.closed = true; },
+      focus: function () {},
+      blur: function () {},
+      postMessage: function () {},
+      location: loc,
+      opener: window,
+      document: { write: function () {}, close: function () {} }
+    };
+  }
+
   try {
-    window.open = function (url) {
-      if (url && url !== 'about:blank') {
-        window.location.assign(url);
+    window.open = function (url, target, features) {
+      if (!url || url === 'about:blank' || url === 'about:blank#blocked') {
+        return fakePopup();
       }
-      return null;
+      try {
+        window.location.assign(url);
+      } catch (_) {}
+      return window;
     };
   } catch (_) {}
 

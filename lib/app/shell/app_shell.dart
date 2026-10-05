@@ -1,8 +1,13 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
+
 import 'package:gizecare/app/router/app_routes.dart';
 import 'package:gizecare/app/shell/evernote_app_sidebar.dart';
+import 'package:gizecare/core/browser/app_desktop_browser.dart';
 import 'package:gizecare/core/platform/app_platform.dart';
 import 'package:gizecare/core/theme/app_colors.dart';
 import 'package:gizecare/core/widgets/brand_mark.dart';
@@ -14,7 +19,6 @@ import 'package:gizecare/features/slack/presentation/providers/slack_providers.d
 import 'package:gizecare/features/telegram/presentation/providers/telegram_providers.dart';
 import 'package:gizecare/features/tracker/domain/entities/timer_state.dart';
 import 'package:gizecare/features/tracker/presentation/providers/timer_controller.dart';
-import 'package:go_router/go_router.dart';
 
 /// Adaptive shell: Evernote-style sidebar on desktop, drawer + bottom on mobile.
 class AppShell extends ConsumerWidget {
@@ -111,6 +115,12 @@ class AppShell extends ConsumerWidget {
           selectedIcon: Icons.play_circle_rounded,
           path: AppRoutes.youtube,
         ),
+        EvernoteNavItem(
+          label: 'Terminal',
+          icon: Icons.terminal_rounded,
+          selectedIcon: Icons.terminal,
+          path: AppRoutes.terminal,
+        ),
       ],
     ),
     EvernoteNavItem(
@@ -179,6 +189,9 @@ class AppShell extends ConsumerWidget {
     final selectedIndex = _indexForPath(location, destinations);
     final timer = ref.watch(timerControllerProvider);
     ref.watch(alarmMonitorProvider);
+    ref.watch(telegramSessionKeepaliveProvider);
+    ref.watch(telegramFocusSyncProvider);
+    ref.watch(telegramNotificationMonitorProvider);
     // Persist host RAM/CPU/disk samples in the background for Reports → System.
     ref.watch(systemMetricsCaptureControllerProvider);
     // Record which features/pages are open for Reports → System usage.
@@ -199,6 +212,11 @@ class AppShell extends ConsumerWidget {
     final hideChrome = browserFullscreen && location == AppRoutes.browser;
     if (hideChrome) {
       return Scaffold(body: child);
+    }
+
+    // Keep companion WebKit windows out of non-browser features (Home, etc.).
+    if (AppDesktopBrowser.isAvailable) {
+      unawaited(AppDesktopBrowser.syncToRoute(location));
     }
 
     return CallbackShortcuts(

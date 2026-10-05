@@ -59,6 +59,12 @@ abstract class TelegramRepository {
 
   Future<Result<Unit>> markChatRead(String telegramChatId);
 
+  /// Ensures a message attachment is downloaded; returns the local file path.
+  Future<Result<String>> ensureMessageMedia(
+    String telegramChatId,
+    String telegramMessageId,
+  );
+
   Future<Result<Unit>> sendDocument({
     required String telegramChatId,
     required String filePath,
@@ -107,4 +113,11 @@ abstract class TelegramRepository {
     required String telegramChatId,
     required String query,
   });
+
+  /// Which allowlisted chat is currently open in the UI (null = none).
+  /// Incoming messages for this chat do not bump unread / toast.
+  void setFocusedChatId(String? telegramChatId);
+
+  /// Live notices for new incoming messages on allowlisted chats.
+  Stream<TelegramIncomingNotice> watchIncomingNotices();
 }

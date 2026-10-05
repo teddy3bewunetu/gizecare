@@ -388,6 +388,8 @@ class TelegramChats extends Table {
   BoolColumn get isAllowed => boolean().withDefault(const Constant(false))();
   DateTimeColumn get lastMessageAt => dateTime().nullable()();
   IntColumn get unreadCount => integer().withDefault(const Constant(0))();
+  /// Highest outgoing message id the peer has read (TDLib last_read_outbox).
+  TextColumn get lastReadOutboxMessageId => text().nullable()();
   /// Local path to downloaded chat avatar (small).
   TextColumn get photoPath => text().nullable()();
   DateTimeColumn get updatedAt => dateTime()();
@@ -479,9 +481,12 @@ class TelegramMessages extends Table {
 
   @override
   Set<Column<Object>> get primaryKey => {id};
-}
 
-/// User-saved browser bookmarks for the in-app browser.
+  @override
+  List<Set<Column<Object>>> get uniqueKeys => [
+        {accountId, telegramChatId, telegramMessageId},
+      ];
+}
 @DataClassName('BrowserBookmarkRow')
 class BrowserBookmarks extends Table {
   TextColumn get id => text()();
@@ -490,6 +495,19 @@ class BrowserBookmarks extends Table {
   TextColumn get faviconUrl => text().nullable()();
   IntColumn get sortOrder => integer().withDefault(const Constant(0))();
   DateTimeColumn get createdAt => dateTime()();
+
+  @override
+  Set<Column<Object>> get primaryKey => {id};
+}
+
+/// Visited pages for the in-app browser (Chrome-style history).
+@DataClassName('BrowserHistoryEntryRow')
+class BrowserHistoryEntries extends Table {
+  TextColumn get id => text()();
+  TextColumn get title => text().withLength(min: 1, max: 300)();
+  TextColumn get url => text().withLength(min: 1, max: 2000)();
+  DateTimeColumn get visitedAt => dateTime()();
+  IntColumn get visitCount => integer().withDefault(const Constant(1))();
 
   @override
   Set<Column<Object>> get primaryKey => {id};

@@ -3,8 +3,11 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:gizecare/core/database/database_provider.dart';
 import 'package:gizecare/core/di/repository_providers.dart';
 import 'package:gizecare/features/browser/data/drift_browser_bookmark_repository.dart';
+import 'package:gizecare/features/browser/data/drift_browser_history_repository.dart';
 import 'package:gizecare/features/browser/domain/browser_bookmark.dart';
 import 'package:gizecare/features/browser/domain/browser_bookmark_repository.dart';
+import 'package:gizecare/features/browser/domain/browser_history_entry.dart';
+import 'package:gizecare/features/browser/domain/browser_history_repository.dart';
 import 'package:gizecare/features/settings/domain/repositories/settings_repository.dart';
 
 final browserBookmarkRepositoryProvider =
@@ -14,6 +17,16 @@ final browserBookmarkRepositoryProvider =
 
 final browserBookmarksProvider = StreamProvider<List<BrowserBookmark>>((ref) {
   return ref.watch(browserBookmarkRepositoryProvider).watchAll();
+});
+
+final browserHistoryRepositoryProvider =
+    Provider<BrowserHistoryRepository>((ref) {
+  return DriftBrowserHistoryRepository(ref.watch(appDatabaseProvider));
+});
+
+final browserHistoryProvider =
+    StreamProvider<List<BrowserHistoryEntry>>((ref) {
+  return ref.watch(browserHistoryRepositoryProvider).watchRecent();
 });
 
 final browserSearchEngineProvider =

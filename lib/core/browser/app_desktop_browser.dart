@@ -25,6 +25,19 @@ typedef BrowserNavigatingCallback = void Function(
   bool isNavigating,
 );
 
+/// In-memory snapshot of a Flutter tab strip entry for a desktop feature.
+class DesktopBrowserTabSnapshot {
+  const DesktopBrowserTabSnapshot({
+    required this.id,
+    required this.url,
+    required this.title,
+  });
+
+  final String id;
+  final String url;
+  final String title;
+}
+
 /// Desktop browser engine — one companion WebKit/WebView2 window per session.
 ///
 /// Apps (ChatGPT / Gemini / YouTube / WhatsApp) use stable [sessionKey]s so
@@ -33,8 +46,15 @@ typedef BrowserNavigatingCallback = void Function(
 abstract final class AppDesktopBrowser {
   static final Map<String, Webview> _tabs = {};
   static final Map<String, String> _sessionUrls = {};
+  static final Map<String, List<DesktopBrowserTabSnapshot>> _featureTabStrips =
+      {};
+  static final Map<String, String> _featureActiveTabIds = {};
   static String? _activeTabId;
-  static var _opening = false;
+  /// When > 0, [show] / [activateTab] must not map companion windows — Flutter
+  /// dialogs/menus sit under the native WebKit surface otherwise.
+  static int _overlayLocks = 0;
+  /// Serializes create/activate so rapid feature switches never drop opens.
+  static Future<void> _openChain = Future<void>.value();
   static const _uuid = Uuid();
 
   static BrowserUrlCallback? onUrlChanged;
@@ -54,9 +74,77 @@ abstract final class AppDesktopBrowser {
 
   static String? get activeTabId => _activeTabId;
 
+  static bool get overlayLocked => _overlayLocks > 0;
+
+  /// Hide every companion window and keep them hidden until matching
+  /// [endOverlay]. Nested (menu → dialog) is supported via a counter.
+  static Future<void> beginOverlay() async {
+    _overlayLocks++;
+    await hide();
+  }
+
+  static Future<void> endOverlay({bool restore = true}) async {
+    if (_overlayLocks > 0) _overlayLocks--;
+    if (_overlayLocks == 0 && restore) {
+      await show();
+    }
+  }
+
   static String? urlForSession(String sessionKey) => _sessionUrls[sessionKey];
 
   static String newTabId() => _uuid.v4();
+
+  /// Routes that host a companion WebKit/WebView2 window.
+  static bool isCompanionPath(String path) {
+    const roots = <String>[
+      '/browser',
+      '/apps/chatgpt',
+      '/apps/gemini',
+      '/apps/youtube',
+      '/messages/whatsapp',
+    ];
+    for (final root in roots) {
+      if (path == root || path.startsWith('$root/')) return true;
+    }
+    return false;
+  }
+
+  /// Hides every companion window when [path] is not a browser feature.
+  /// Call from the shell on every route change so Home/Notes never leave a
+  /// floating WebKit window behind (hot reload / failed dispose / races).
+  static Future<void> syncToRoute(String path) async {
+    if (!isAvailable) return;
+    if (!isCompanionPath(path)) {
+      await hide();
+    }
+  }
+
+  /// Last known Flutter tab strip for a feature (e.g. `app:whatsapp`).
+  static List<DesktopBrowserTabSnapshot>? featureTabStrip(String featureKey) {
+    final strip = _featureTabStrips[featureKey];
+    if (strip == null || strip.isEmpty) return null;
+    return List<DesktopBrowserTabSnapshot>.unmodifiable(strip);
+  }
+
+  static String? featureActiveTabId(String featureKey) =>
+      _featureActiveTabIds[featureKey];
+
+  /// Persists the Flutter tab strip so leaving Documents/Projects and returning
+  /// restores the same tabs/windows for that feature.
+  static void saveFeatureTabStrip(
+    String featureKey,
+    List<DesktopBrowserTabSnapshot> tabs, {
+    required String activeTabId,
+  }) {
+    if (featureKey.isEmpty || tabs.isEmpty) return;
+    _featureTabStrips[featureKey] = List<DesktopBrowserTabSnapshot>.from(tabs);
+    _featureActiveTabIds[featureKey] = activeTabId;
+  }
+
+  static void clearFeatureTabStrip(String featureKey) {
+    _featureTabStrips.remove(featureKey);
+    _featureActiveTabIds.remove(featureKey);
+  }
 
   /// Stable session id for an app / site (e.g. `host:www.youtube.com`).
   static String sessionKeyForUrl(String url) {
@@ -68,14 +156,36 @@ abstract final class AppDesktopBrowser {
 
   /// Opens or resumes a session. Warm sessions are only navigated when
   /// [forceNavigate] is true (address-bar submit / explicit open).
+  ///
+  /// Calls are serialized — rapid YouTube→WhatsApp→ChatGPT switches wait
+  /// their turn instead of returning false while another open is in flight.
   static Future<bool> openSession(
     String sessionKey,
     String url, {
     bool forceNavigate = false,
+    bool activate = true,
+  }) {
+    if (!isAvailable) return Future.value(false);
+    late final Future<bool> result;
+    result = _openChain.then(
+      (_) => _openSessionBody(
+        sessionKey,
+        url,
+        forceNavigate: forceNavigate,
+        activate: activate,
+      ),
+    );
+    // Keep the gate advancing even when a create/activate fails.
+    _openChain = result.then((_) {}, onError: (_) {});
+    return result;
+  }
+
+  static Future<bool> _openSessionBody(
+    String sessionKey,
+    String url, {
+    required bool forceNavigate,
+    required bool activate,
   }) async {
-    if (!isAvailable) return false;
-    if (_opening) return false;
-    _opening = true;
     try {
       if (!await WebviewWindow.isWebviewAvailable()) {
         return _launchExternal(url);
@@ -88,7 +198,9 @@ abstract final class AppDesktopBrowser {
           existing.launch(url);
           _sessionUrls[sessionKey] = url;
         }
-        await activateTab(sessionKey);
+        if (activate) {
+          await activateTab(sessionKey);
+        }
         final known = _sessionUrls[sessionKey] ?? url;
         onUrlChanged?.call(sessionKey, known);
         return true;
@@ -124,38 +236,51 @@ abstract final class AppDesktopBrowser {
       }
 
       webview.launch(url);
+      // Publish the intended URL immediately so Flutter chrome doesn't keep
+      // showing the previous tab's address while WebKit boots.
+      onUrlChanged?.call(sessionKey, url);
       unawaited(
         webview.onClose.then((_) {
           _tabs.remove(sessionKey);
           _sessionUrls.remove(sessionKey);
+          _removeTabFromFeatureStrips(sessionKey);
           if (_activeTabId == sessionKey) {
             _activeTabId = _tabs.keys.isEmpty ? null : _tabs.keys.first;
           }
         }),
       );
-      await activateTab(sessionKey);
+      if (activate) {
+        await activateTab(sessionKey);
+      } else {
+        try {
+          await webview.setWebviewWindowVisibility(false);
+        } catch (_) {}
+      }
       return true;
     } catch (e, st) {
       debugPrint('AppDesktopBrowser.openSession failed: $e\n$st');
       _tabs.remove(sessionKey);
       _sessionUrls.remove(sessionKey);
       return _launchExternal(url);
-    } finally {
-      _opening = false;
     }
   }
 
   /// Creates (or reuses) a content window for [tabId] and loads [url].
-  static Future<bool> openTab(String tabId, String url) =>
-      openSession(tabId, url, forceNavigate: true);
+  static Future<bool> openTab(
+    String tabId,
+    String url, {
+    bool activate = true,
+  }) =>
+      openSession(tabId, url, forceNavigate: true, activate: activate);
 
   /// Shows [tabId] and hides every other tab window.
   static Future<void> activateTab(String tabId) async {
     if (!_tabs.containsKey(tabId)) return;
     _activeTabId = tabId;
     for (final entry in _tabs.entries) {
+      final visible = entry.key == tabId && !overlayLocked;
       try {
-        await entry.value.setWebviewWindowVisibility(entry.key == tabId);
+        await entry.value.setWebviewWindowVisibility(visible);
       } catch (e) {
         debugPrint('AppDesktopBrowser.activateTab visibility: $e');
       }
@@ -176,9 +301,23 @@ abstract final class AppDesktopBrowser {
     }
   }
 
+  /// Hides every window belonging to a feature's saved tab strip (primary +
+  /// extra tabs). Falls back to hiding [featureKey] alone when no strip.
+  static Future<void> hideFeature(String featureKey) async {
+    final strip = _featureTabStrips[featureKey];
+    final ids = <String>{
+      featureKey,
+      if (strip != null) ...strip.map((t) => t.id),
+    };
+    for (final id in ids) {
+      await hideSession(id);
+    }
+  }
+
   static Future<void> closeTab(String tabId) async {
     final w = _tabs.remove(tabId);
     _sessionUrls.remove(tabId);
+    _removeTabFromFeatureStrips(tabId);
     if (_activeTabId == tabId) {
       _activeTabId = _tabs.keys.isEmpty ? null : _tabs.keys.first;
     }
@@ -187,6 +326,22 @@ abstract final class AppDesktopBrowser {
     } catch (_) {}
     if (_activeTabId != null) {
       await activateTab(_activeTabId!);
+    }
+  }
+
+  static void _removeTabFromFeatureStrips(String tabId) {
+    for (final entry in _featureTabStrips.entries.toList()) {
+      final next = entry.value.where((t) => t.id != tabId).toList();
+      if (next.length == entry.value.length) continue;
+      if (next.isEmpty) {
+        _featureTabStrips.remove(entry.key);
+        _featureActiveTabIds.remove(entry.key);
+      } else {
+        _featureTabStrips[entry.key] = next;
+        if (_featureActiveTabIds[entry.key] == tabId) {
+          _featureActiveTabIds[entry.key] = next.first.id;
+        }
+      }
     }
   }
 
@@ -200,8 +355,12 @@ abstract final class AppDesktopBrowser {
         onInAppMedia?.call(tabId, url);
         return false;
       }
-      _sessionUrls[tabId] = url;
-      onUrlChanged?.call(tabId, url);
+      // Google account / One Tap widgets often navigate the top frame to
+      // ogs.google.com — allow the request but don't overwrite the omnibox.
+      if (!_isTransientGoogleChromeUrl(url)) {
+        _sessionUrls[tabId] = url;
+        onUrlChanged?.call(tabId, url);
+      }
       return true;
     });
     webview.setOnHistoryChangedCallback((canGoBack, canGoForward) {
@@ -226,14 +385,32 @@ abstract final class AppDesktopBrowser {
         u.contains('youtube-nocookie.com/');
   }
 
+  /// Account chooser / app-launcher widgets that briefly take over the main frame.
+  static bool _isTransientGoogleChromeUrl(String url) {
+    final uri = Uri.tryParse(url.trim());
+    if (uri == null) return false;
+    final host = uri.host.toLowerCase();
+    if (host == 'ogs.google.com') return true;
+    if (host == 'accounts.google.com') {
+      final path = uri.path.toLowerCase();
+      return path.contains('accountchooser') ||
+          path.contains('signin') ||
+          path.contains('servicelogin') ||
+          path.contains('o/oauth2');
+    }
+    return false;
+  }
+
   static Future<void> navigate(String url) async {
     final id = _activeTabId;
     if (id == null) {
-      await openSession(sessionKeyForUrl(url), url, forceNavigate: true);
+      // Never bind omnibox navigations to host:* app sessions — always a fresh tab id.
+      await openSession(newTabId(), url, forceNavigate: true);
       return;
     }
     _sessionUrls[id] = url;
     _tabs[id]?.launch(url);
+    onUrlChanged?.call(id, url);
   }
 
   static Future<void> goBack() async => _tabs[_activeTabId]?.back();
@@ -255,6 +432,7 @@ abstract final class AppDesktopBrowser {
   }
 
   static Future<void> show() async {
+    if (overlayLocked) return;
     final id = _activeTabId;
     if (id == null) return;
     try {
@@ -310,6 +488,8 @@ abstract final class AppDesktopBrowser {
     final all = List<Webview>.from(_tabs.values);
     _tabs.clear();
     _sessionUrls.clear();
+    _featureTabStrips.clear();
+    _featureActiveTabIds.clear();
     _activeTabId = null;
     for (final w in all) {
       try {
@@ -339,6 +519,26 @@ abstract final class AppDesktopBrowser {
       }
     } catch (e) {
       debugPrint('AppDesktopBrowser.clearProfileData: $e');
+    }
+    // Linux WebKitGTK profile (cookies.sqlite + cache) lives outside the
+    // Windows-oriented userDataFolder path.
+    if (Platform.isLinux) {
+      try {
+        final home = Platform.environment['HOME'] ?? '';
+        if (home.isNotEmpty) {
+          for (final rel in [
+            '.local/share/gizecare/webkit',
+            '.cache/gizecare/webkit',
+          ]) {
+            final d = Directory(p.join(home, rel));
+            if (d.existsSync()) {
+              await d.delete(recursive: true);
+            }
+          }
+        }
+      } catch (e) {
+        debugPrint('AppDesktopBrowser.clearLinuxWebkit: $e');
+      }
     }
   }
 

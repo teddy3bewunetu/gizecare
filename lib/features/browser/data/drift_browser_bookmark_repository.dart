@@ -97,6 +97,45 @@ class DriftBrowserBookmarkRepository implements BrowserBookmarkRepository {
   }
 
   @override
+  Future<Result<BrowserBookmark>> update({
+    required String id,
+    required String title,
+    required String url,
+    String? faviconUrl,
+  }) async {
+    try {
+      final normalized = url.trim();
+      final resolvedTitle = title.trim().isEmpty ? normalized : title.trim();
+      final clash = await (_db.select(_db.browserBookmarks)
+            ..where((t) => t.url.equals(normalized) & t.id.isNotValue(id)))
+          .getSingleOrNull();
+      if (clash != null) {
+        return Err(
+          const ValidationFailure('Another bookmark already uses that URL'),
+        );
+      }
+      final updated = await (_db.update(_db.browserBookmarks)
+            ..where((t) => t.id.equals(id)))
+          .write(
+        BrowserBookmarksCompanion(
+          title: Value(resolvedTitle),
+          url: Value(normalized),
+          faviconUrl: Value(faviconUrl),
+        ),
+      );
+      if (updated == 0) {
+        return Err(const CacheFailure('Bookmark not found'));
+      }
+      final row = await (_db.select(_db.browserBookmarks)
+            ..where((t) => t.id.equals(id)))
+          .getSingle();
+      return Success(_map(row));
+    } catch (e) {
+      return Err(CacheFailure('Failed to update bookmark', cause: e));
+    }
+  }
+
+  @override
   Future<Result<Unit>> remove(String id) async {
     try {
       await (_db.delete(_db.browserBookmarks)..where((t) => t.id.equals(id)))

@@ -82,8 +82,8 @@ class _BrowserSettingsSheet extends ConsumerWidget {
                   builder: (ctx) => AlertDialog(
                     title: const Text('Clear browsing data?'),
                     content: const Text(
-                      'This clears the in-app browser profile (cookies/cache). '
-                      'You can also remove all bookmarks.',
+                      'Choose what to remove. Cookies live in the WebKit '
+                      'profile; history and bookmarks are stored in ጊዜCare.',
                     ),
                     actions: [
                       TextButton(
@@ -91,18 +91,27 @@ class _BrowserSettingsSheet extends ConsumerWidget {
                         child: const Text('Cancel'),
                       ),
                       TextButton(
+                        onPressed: () => Navigator.pop(ctx, 'history'),
+                        child: const Text('History'),
+                      ),
+                      TextButton(
                         onPressed: () => Navigator.pop(ctx, 'profile'),
-                        child: const Text('Profile only'),
+                        child: const Text('Cookies / cache'),
                       ),
                       FilledButton(
                         onPressed: () => Navigator.pop(ctx, 'all'),
-                        child: const Text('Profile + bookmarks'),
+                        child: const Text('Everything'),
                       ),
                     ],
                   ),
                 );
                 if (choice == null || choice == 'cancel') return;
-                await AppDesktopBrowser.clearProfileData();
+                if (choice == 'history' || choice == 'all') {
+                  await ref.read(browserHistoryRepositoryProvider).clearAll();
+                }
+                if (choice == 'profile' || choice == 'all') {
+                  await AppDesktopBrowser.clearProfileData();
+                }
                 if (choice == 'all') {
                   await ref.read(browserBookmarkRepositoryProvider).clearAll();
                 }
@@ -117,7 +126,8 @@ class _BrowserSettingsSheet extends ConsumerWidget {
             const SizedBox(height: 12),
             Text(
               'Links from Notes, Mail, and chat open in ጊዜCare Browser by default. '
-              'OAuth and tel/tg links still use the system handler.',
+              'Google sign-in stays in the same tab (popups crash WebKit on Linux). '
+              'Cookies persist across restarts.',
               style: Theme.of(context).textTheme.bodySmall?.copyWith(
                     color: scheme.onSurfaceVariant,
                   ),
