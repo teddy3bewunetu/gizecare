@@ -43,7 +43,16 @@ jobs:
         id: snap
         run: echo "snap=$(ls -1 ./*.snap | head -n1)" >> "$GITHUB_OUTPUT"
 
+      - name: Upload snap artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: gizecare-snap
+          path: ${{ steps.snap.outputs.snap }}
+
+      # Needs repo secret SNAPCRAFT_STORE_CREDENTIALS (see header comments).
+      # Skipped when the secret is missing so the build can still succeed.
       - name: Publish to Snap Store
+        if: ${{ secrets.SNAPCRAFT_STORE_CREDENTIALS != '' }}
         uses: snapcore/action-publish@v1
         env:
           SNAPCRAFT_STORE_CREDENTIALS: ${{ secrets.SNAPCRAFT_STORE_CREDENTIALS }}
