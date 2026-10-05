@@ -1,0 +1,119 @@
+# GizeCare — Snap Store packaging
+#
+# One-time setup (on your machine):
+#   sudo snap install snapcraft --classic
+#   sudo snap install lxd
+#   sudo lxd init --auto
+#   sudo usermod -aG lxd "$USER"   # then log out/in
+#   snapcraft login
+#   snapcraft register gizecare     # once, if the name is free
+#
+# Build & publish:
+#   snapcraft --use-lxd
+#   snapcraft upload --release=edge *.snap
+#
+# Local test before uploading:
+#   sudo snap install ./gizecare_*.snap --dangerous
+#   gizecare
+
+name: gizecare
+base: core22
+version: '0.1.0'
+summary: GizeCare — your workday, one place
+description: |
+  Offline-first workday hub for freelancers, engineers, and designers:
+  time tracking, projects, notes, documents, calendar, Gmail, and Telegram
+  without juggling separate apps.
+
+grade: stable
+confinement: strict
+
+architectures:
+  - build-on: amd64
+
+slots:
+  dbus-gizecare:
+    interface: dbus
+    bus: session
+    name: com.gizecare.gizecare
+
+apps:
+  gizecare:
+    command: gizecare
+    extensions: [gnome]
+    plugs:
+      - network
+      - network-bind
+      - home
+      - removable-media
+      - audio-playback
+      - audio-record
+      - browser-support
+      - password-manager-service
+      - shared-memory
+      - process-control
+    slots:
+      - dbus-gizecare
+
+parts:
+  # Pin Flutter to the same release used for local development (3.38.3 / Dart
+  # 3.10.1). The snapcraft "flutter" plugin only tracks channel tips, and a
+  # newer stable breaks flutter_quill / pdfrx in this project.
+  flutter-sdk:
+    plugin: nil
+    source: https://github.com/flutter/flutter.git
+    source-tag: '3.38.3'
+    source-depth: 1
+    override-build: |
+      set -eux
+      mkdir -p "$CRAFT_PART_INSTALL/usr/libexec"
+      cp -a "$CRAFT_PART_SRC" "$CRAFT_PART_INSTALL/usr/libexec/flutter"
+      mkdir -p "$CRAFT_PART_INSTALL/usr/bin"
+      ln -sf ../libexec/flutter/bin/flutter "$CRAFT_PART_INSTALL/usr/bin/flutter"
+      ln -sf ../libexec/flutter/bin/dart "$CRAFT_PART_INSTALL/usr/bin/dart"
+      "$CRAFT_PART_INSTALL/usr/bin/flutter" config --no-analytics --enable-linux-desktop
+      "$CRAFT_PART_INSTALL/usr/bin/flutter" precache --linux
+    build-packages:
+      - clang
+      - cmake
+      - curl
+      - git
+      - libgtk-3-dev
+      - ninja-build
+      - unzip
+      - xz-utils
+    # SDK is only needed at build time — do not ship it in the snap.
+    override-prime: ''
+
+  gizecare:
+    after: [flutter-sdk]
+    source: .
+    plugin: nil
+    override-build: |
+      set -eux
+      # Host `flutter run` leaves CMakeCache with absolute host paths.
+      rm -rf build
+      export PATH="$CRAFT_STAGE/usr/bin:$PATH"
+      flutter config --no-analytics --enable-linux-desktop
+      flutter pub get
+      flutter build linux --release --target=lib/main.dart
+      cp -a build/linux/*/release/bundle/. "$CRAFT_PART_INSTALL/"
+    build-packages:
+      - clang
+      - cmake
+      - libgtk-3-dev
+      - libwebkit2gtk-4.1-dev
+      - libsecret-1-dev
+      - libmpv-dev
+      - ninja-build
+      - pkg-config
+    stage-packages:
+      - libwebkit2gtk-4.1-0
+      - libjavascriptcoregtk-4.1-0
+      - libsecret-1-0
+      # media_kit_video links against libmpv (PkgConfig::mpv).
+      - libmpv1
+    prime:
+      - -usr/include
+      - -usr/share/doc
+      - -usr/share/man
