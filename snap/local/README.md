@@ -208,6 +208,7 @@ You do **not** need CI to publish; local `snapcraft upload` is enough.
 | `flutter_quill` / `pdfrx` compile errors in Snapcraft | Snap was using a newer Flutter than this repo. Build pins **Flutter 3.38.3** (see `flutter-sdk` part). After changing the pin: `snapcraft clean && snapcraft pack --use-lxd`. |
 | Build fails on WebKit / GTK | Clean and retry: `snapcraft clean && snapcraft pack --use-lxd`. |
 | App cannot access network / files | Strict snaps use plugs listed in `snapcraft.yaml`. After store review, some interfaces may need manual connection once. |
+| App exits immediately / `libblas.so.3: cannot open shared object file` | Debian stages BLAS/LAPACK under `blas/` and `lapack/` without alternatives soname links. `snapcraft.yaml` recreates `libblas.so.3` / `liblapack.so.3` in `override-prime`. Rebuild and republish if you changed staging. |
 
 ### LXD network fix (Docker / UFW)
 

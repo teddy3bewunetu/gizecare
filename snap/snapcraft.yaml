@@ -112,7 +112,20 @@ parts:
       - libjavascriptcoregtk-4.1-0
       - libsecret-1-0
       # media_kit_video links against libmpv (PkgConfig::mpv).
+      # libmpv → pocketsphinx → sphinxbase needs BLAS/LAPACK.
       - libmpv1
+      - libblas3
+      - liblapack3
+    override-prime: |
+      set -eux
+      craftctl default
+      # Debian puts BLAS/LAPACK under blas/ and lapack/ and exposes
+      # libblas.so.3 / liblapack.so.3 via update-alternatives. Snapcraft
+      # stages the packages but does not recreate those soname links, so
+      # the binary fails at startup with "libblas.so.3: cannot open...".
+      libdir="$CRAFT_PRIME/usr/lib/$CRAFT_ARCH_TRIPLET"
+      ln -sfn blas/libblas.so.3 "$libdir/libblas.so.3"
+      ln -sfn lapack/liblapack.so.3 "$libdir/liblapack.so.3"
     prime:
       - -usr/include
       - -usr/share/doc
