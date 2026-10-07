@@ -209,6 +209,7 @@ You do **not** need CI to publish; local `snapcraft upload` is enough.
 | Build fails on WebKit / GTK | Clean and retry: `snapcraft clean && snapcraft pack --use-lxd`. |
 | App cannot access network / files | Strict snaps use plugs listed in `snapcraft.yaml`. After store review, some interfaces may need manual connection once. |
 | App exits immediately / `libblas.so.3: cannot open shared object file` | Debian stages BLAS/LAPACK under `blas/` and `lapack/` without alternatives soname links. `snapcraft.yaml` recreates `libblas.so.3` / `liblapack.so.3` in `override-prime`. Rebuild and republish if you changed staging. |
+| App exits with `libEGL fatal: did not find extension DRI_Mesa version 1` | Staged Mesa/GL from `libmpv` conflicts with the gnome platform. `override-prime` strips those libs so graphics come from gnome-platform + `opengl`. |
 
 ### LXD network fix (Docker / UFW)
 
