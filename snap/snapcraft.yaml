@@ -126,6 +126,16 @@ parts:
       libdir="$CRAFT_PRIME/usr/lib/$CRAFT_ARCH_TRIPLET"
       ln -sfn blas/libblas.so.3 "$libdir/libblas.so.3"
       ln -sfn lapack/liblapack.so.3 "$libdir/liblapack.so.3"
+      # libmpv (and friends) pull Mesa/GL into the snap. Those conflict with
+      # the gnome extension's platform DRI stack and crash at startup with
+      # "libEGL fatal: did not find extension DRI_Mesa version 1". Graphics
+      # must come from gnome-platform + the opengl plug, not stage-packages.
+      rm -f "$libdir"/libEGL.so* "$libdir"/libEGL_mesa.so* \
+            "$libdir"/libGL.so* "$libdir"/libGLESv2.so* \
+            "$libdir"/libGLX.so* "$libdir"/libGLX_*.so* \
+            "$libdir"/libGLdispatch.so* "$libdir"/libglapi.so* \
+            "$libdir"/libgbm.so*
+      rm -rf "$libdir/dri" "$CRAFT_PRIME/usr/share/glvnd"
     prime:
       - -usr/include
       - -usr/share/doc
