@@ -39,7 +39,8 @@ slots:
 
 apps:
   gizecare:
-    command: gizecare
+    # Wrapper forces gnome-platform Mesa after desktop-launch (see bin/gizecare-launch).
+    command: bin/gizecare-launch
     extensions: [gnome]
     plugs:
       - network
@@ -98,6 +99,8 @@ parts:
       flutter pub get
       flutter build linux --release --target=lib/main.dart
       cp -a build/linux/*/release/bundle/. "$CRAFT_PART_INSTALL/"
+      install -D -m 755 snap/local/gizecare-launch \
+        "$CRAFT_PART_INSTALL/bin/gizecare-launch"
     build-packages:
       - clang
       - cmake
@@ -112,8 +115,54 @@ parts:
       - libjavascriptcoregtk-4.1-0
       - libsecret-1-0
       # media_kit_video links against libmpv (PkgConfig::mpv).
+      # libmpv → pocketsphinx → sphinxbase needs BLAS/LAPACK.
       - libmpv1
+      - libblas3
+      - liblapack3
+    override-prime: |
+      set -eux
+      craftctl default
+      # Debian puts BLAS/LAPACK under blas/ and lapack/ and exposes
+      # libblas.so.3 / liblapack.so.3 via update-alternatives. Snapcraft
+      # stages the packages but does not recreate those soname links, so
+      # the binary fails at startup with "libblas.so.3: cannot open...".
+      libdir="$CRAFT_PRIME/usr/lib/$CRAFT_ARCH_TRIPLET"
+      ln -sfn blas/libblas.so.3 "$libdir/libblas.so.3"
+      ln -sfn lapack/liblapack.so.3 "$libdir/liblapack.so.3"
+      # libmpv (and friends) pull Mesa/GL into the snap. Those conflict with
+      # the gnome extension's platform DRI stack and crash at startup with
+      # "libEGL fatal: did not find extension DRI_Mesa version 1". Graphics
+      # must come from gnome-platform + the opengl plug, not stage-packages.
+      rm -f "$libdir"/libEGL.so* "$libdir"/libEGL_mesa.so* \
+            "$libdir"/libGL.so* "$libdir"/libGLESv2.so* \
+            "$libdir"/libGLX.so* "$libdir"/libGLX_*.so* \
+            "$libdir"/libGLdispatch.so* "$libdir"/libglapi.so* \
+            "$libdir"/libgbm.so*
+      rm -rf "$libdir/dri" "$CRAFT_PRIME/usr/share/glvnd"
+      # Size: Mesa also stages LLVM (~110MB) for lavapipe; nothing else in
+      # the snap links it after dri/EGL are removed. FFmpeg pulls flite TTS
+      # voice banks (~25MB) that media_kit never needs.
+      rm -f "$libdir"/libLLVM*
+      rm -f "$libdir"/libflite*
+      rm -rf "$CRAFT_PRIME/usr/lib/aspell" \
+             "$CRAFT_PRIME/usr/share/icons" \
+             "$CRAFT_PRIME/usr/share/locale" \
+             "$CRAFT_PRIME/usr/share/fonts" \
+             "$CRAFT_PRIME/usr/share/hunspell" \
+             "$CRAFT_PRIME/usr/share/dictionaries-common" \
+             "$CRAFT_PRIME/usr/share/lintian" \
+             "$CRAFT_PRIME/usr/share/doc" \
+             "$CRAFT_PRIME/usr/share/man" \
+             "$CRAFT_PRIME/usr/share/bug"
+      # Drop debug symbols from Flutter/native libs (safe for release).
+      find "$CRAFT_PRIME" -type f \( -name '*.so' -o -name '*.so.*' -o -name gizecare \) \
+        -exec strip --strip-unneeded {} + 2>/dev/null || true
     prime:
       - -usr/include
       - -usr/share/doc
       - -usr/share/man
+      - -usr/share/icons
+      - -usr/share/locale
+      - -usr/share/fonts
+      - -usr/share/lintian
+      - -usr/share/bug
