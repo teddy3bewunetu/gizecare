@@ -1,0 +1,14 @@
+#!/bin/bash
+# Runs after the gnome extension command-chain. Prefer gnome-platform Mesa/DRI
+# so Flutter can create a GL context on hosts whose Mesa (e.g. Ubuntu 24.04
+# 25.x) does not match the core22/gnome-42 stack.
+set -euo pipefail
+
+plat_lib="$SNAP/gnome-platform/usr/lib/x86_64-linux-gnu"
+plat_lib32="$SNAP/gnome-platform/lib/x86_64-linux-gnu"
+
+export LIBGL_DRIVERS_PATH="${plat_lib}/dri"
+export __EGL_VENDOR_LIBRARY_DIRS="$SNAP/gnome-platform/usr/share/glvnd/egl_vendor.d"
+export LD_LIBRARY_PATH="${plat_lib}:${plat_lib32}${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+
+exec "$SNAP/gizecare" "$@"
