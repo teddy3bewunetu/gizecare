@@ -12,5 +12,8 @@ export __EGL_VENDOR_LIBRARY_DIRS="$SNAP/gnome-platform/usr/share/glvnd/egl_vendo
 export LD_LIBRARY_PATH="${plat_lib}:${plat_lib32}${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
 # Avoid xdg-desktop-portal calls that return NotAllowed for WebKit in strict snaps.
 export GTK_USE_PORTAL=0
+export GIO_USE_PORTALS=0
+# Outer snap confinement already applies; nested WebKit sandbox breaks NetworkProcess.
+export WEBKIT_DISABLE_SANDBOX_THIS_IS_DANGEROUS=1
 
 exec "$SNAP/gizecare" "$@"

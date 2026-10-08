@@ -926,14 +926,16 @@ class TdjsonClient {
     final realHome = env['SNAP_REAL_HOME'] ?? '';
 
     final candidates = <String>[
+      // Prefer the snap-bundled TDLib (built on core22). A host Ubuntu 24.04
+      // .so needs GLIBC_2.38 and will fail inside the snap even if listed in
+      // TELEGRAM_TDLIB_PATH / common/.env.
+      if (snap.isNotEmpty) p.join(snap, 'lib', 'libtdjson.so'),
+      if (snap.isNotEmpty) p.join(snap, 'usr', 'lib', 'libtdjson.so'),
       if (TelegramConfig.tdlibPath.isNotEmpty) TelegramConfig.tdlibPath,
       'libtdjson.so',
       'libtdjson.so.1.8.0',
-      // Snap: drop the .so into common, or ship under $SNAP/lib.
       if (snapCommon.isNotEmpty) p.join(snapCommon, 'libtdjson.so'),
       if (snapData.isNotEmpty) p.join(snapData, 'libtdjson.so'),
-      if (snap.isNotEmpty) p.join(snap, 'lib', 'libtdjson.so'),
-      if (snap.isNotEmpty) p.join(snap, 'usr', 'lib', 'libtdjson.so'),
       if (realHome.isNotEmpty)
         p.join(realHome, '.local', 'lib', 'libtdjson.so'),
       '/usr/local/lib/libtdjson.so',

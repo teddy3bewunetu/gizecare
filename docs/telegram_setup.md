@@ -64,7 +64,7 @@ Also tried automatically:
 | Issue | Fix |
 |-------|-----|
 | Missing API credentials | Fill `.env` and restart |
-| Could not load libtdjson.so | Build TDLib and set `TELEGRAM_TDLIB_PATH`, or copy to `~/snap/gizecare/common/libtdjson.so` (Snap) |
-| Snap install ignores project `.env` | Use `~/snap/gizecare/common/.env` — see `docs/snap_setup.md` |
+| Could not load libtdjson.so | Local: build TDLib and set `TELEGRAM_TDLIB_PATH`. Snap: use a release that includes the `tdlib` part (do not copy a 24.04 host `.so` into the snap — glibc mismatch). |
+| Snap install missing Google/Slack/Telegram API config | CI must bake dart-defines from Actions Variables — see `docs/snap_setup.md` |
 | Auth error | Check phone format (`+…`), code, 2FA |
 | Empty chat list | Sync / Choose chats after connect; wait a few seconds for TDLib to load dialogs |

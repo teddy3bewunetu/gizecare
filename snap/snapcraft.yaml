@@ -52,9 +52,17 @@ apps:
       # Gnome extension sets GTK_USE_PORTAL=1; WebKit then hits
       # org.freedesktop.portal.Error.NotAllowed inside the sandbox.
       GTK_USE_PORTAL: '0'
+      GIO_USE_PORTALS: '0'
+      # Snap already sandboxes; nested WebKit bubblewrap breaks NetworkProcess.
+      WEBKIT_DISABLE_SANDBOX_THIS_IS_DANGEROUS: '1'
+      # TDLib is built in the `tdlib` part (core22 / jammy glibc). A host
+      # Ubuntu 24.04 libtdjson.so will fail with GLIBC_2.38 inside the snap.
+      TELEGRAM_TDLIB_PATH: $SNAP/lib/libtdjson.so
     plugs:
       - network
       - network-bind
+      # Lets WebKit’s proxy resolver portal see network (avoids NotAllowed white page).
+      - network-status
       - home
       - removable-media
       - audio-playback
@@ -67,6 +75,50 @@ apps:
       - dbus-gizecare
 
 parts:
+  # Telegram TDLib JSON client — must be compiled on core22 (jammy). A .so
+  # built on the host (Ubuntu 24.04+) needs newer glibc and will not load.
+  tdlib:
+    source: https://github.com/tdlib/td.git
+    source-depth: 1
+    plugin: nil
+    build-packages:
+      - cmake
+      - g++
+      - gperf
+      - libssl-dev
+      - ninja-build
+      - zlib1g-dev
+    stage-packages:
+      - libssl3
+      - zlib1g
+    override-build: |
+      set -eux
+      cmake -S "$CRAFT_PART_SRC" -B build -G Ninja \
+        -DCMAKE_BUILD_TYPE=Release \
+        -DCMAKE_INSTALL_PREFIX=/usr
+      cmake --build build --target tdjson -j"$(nproc)"
+      mkdir -p "$CRAFT_PART_INSTALL/lib"
+      # Prefer the versioned library and create the libtdjson.so soname link.
+      found="$(find build -name 'libtdjson.so*' -type f | head -n1)"
+      test -n "$found"
+      cp -a "$found" "$CRAFT_PART_INSTALL/lib/"
+      base="$(basename "$found")"
+      ln -sfn "$base" "$CRAFT_PART_INSTALL/lib/libtdjson.so"
+      # Also copy any parallel soname symlinks from the build tree.
+      while IFS= read -r link; do
+        name="$(basename "$link")"
+        [ "$name" = "libtdjson.so" ] && continue
+        [ -e "$CRAFT_PART_INSTALL/lib/$name" ] && continue
+        cp -a "$link" "$CRAFT_PART_INSTALL/lib/" || true
+      done < <(find build -name 'libtdjson.so*' -type l)
+    prime:
+      - lib/libtdjson.so*
+      - usr/lib/*/libssl.so*
+      - usr/lib/*/libcrypto.so*
+      - usr/lib/*/libz.so*
+      - -usr/include
+      - -usr/share
+
   # Pin Flutter to the same release used for local development (3.38.3 / Dart
   # 3.10.1). The snapcraft "flutter" plugin only tracks channel tips, and a
   # newer stable breaks flutter_quill / pdfrx in this project.
