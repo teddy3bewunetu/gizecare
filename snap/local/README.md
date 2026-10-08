@@ -176,11 +176,20 @@ snapcraft release gizecare <revision> stable
 
 ---
 
-## Optional: GitHub Actions
+## GitHub Actions (preferred publish path)
 
-`.github/workflows/snapcraft.yml` can build and upload on pushes to `main` or tags `v*.*.*`.
+`.github/workflows/snapcraft.yml` builds and uploads on pushes to `main` (→ edge) or tags `v*.*.*` (→ candidate).
 
-To enable it, create a repository secret `SNAPCRAFT_STORE_CREDENTIALS`:
+**Settings → Secrets and variables → Actions:**
+
+| Name | Tab | Purpose |
+|------|-----|---------|
+| `SNAPCRAFT_STORE_CREDENTIALS` | **Variables** | Store upload (`export-login` file). Secrets were unreliable for this multiline value. |
+| `GOOGLE_CALENDAR_CLIENT_ID` / `SECRET` | Variables or Secrets | Baked into the app |
+| `SLACK_CLIENT_ID` / `SECRET` | Variables or Secrets | Baked into the app |
+| `TELEGRAM_API_ID` / `HASH` | Variables or Secrets | Baked into the app |
+
+Store login:
 
 ```bash
 snapcraft export-login \
@@ -190,9 +199,7 @@ snapcraft export-login \
   snapcraft-creds.txt
 ```
 
-Paste the file contents into GitHub → **Settings → Secrets and variables → Actions → New repository secret** → name `SNAPCRAFT_STORE_CREDENTIALS`. Delete the local `snapcraft-creds.txt` afterward.
-
-You do **not** need CI to publish; local `snapcraft upload` is enough.
+Paste the file into the **Variables** entry `SNAPCRAFT_STORE_CREDENTIALS`, then delete the local file. Full detail: `docs/snap_setup.md`.
 
 ---
 
@@ -208,7 +215,7 @@ You do **not** need CI to publish; local `snapcraft upload` is enough.
 | `flutter_quill` / `pdfrx` compile errors in Snapcraft | Snap was using a newer Flutter than this repo. Build pins **Flutter 3.38.3** (see `flutter-sdk` part). After changing the pin: `snapcraft clean && snapcraft pack --use-lxd`. |
 | Build fails on WebKit / GTK | Clean and retry: `snapcraft clean && snapcraft pack --use-lxd`. |
 | App cannot access network / files | Strict snaps use plugs listed in `snapcraft.yaml`. After store review, some interfaces may need manual connection once. |
-| Gmail / Slack / Telegram “missing credentials” after Snap install | Project `.env` is not used. Put keys in `~/snap/gizecare/common/.env` — see `docs/snap_setup.md`. |
+| Gmail / Slack / Telegram “not configured” after Snap install | Release builds need GitHub Actions secrets baked as dart-defines — see `docs/snap_setup.md`. |
 | Browser shows `portal.Error.NotAllowed` | Needs `GTK_USE_PORTAL=0` + private `shared-memory` (in packaging). Refresh snap and restart. |
 | Telegram cannot load libtdjson | Copy `libtdjson.so` to `~/snap/gizecare/common/` or set `TELEGRAM_TDLIB_PATH`. |
 | In-app terminal: Permission denied | Expected under strict confinement; use system terminal or `/bin` tools only. |

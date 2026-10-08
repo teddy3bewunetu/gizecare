@@ -275,8 +275,8 @@ class _SlackPageState extends ConsumerState<SlackPage> {
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 20),
               child: Text(
-                'Add SLACK_CLIENT_ID / SLACK_CLIENT_SECRET to .env '
-                '(or ~/snap/gizecare/common/.env for Snap). '
+                'Slack sign-in is not configured in this build. '
+                'Developers: set SLACK_CLIENT_ID / SLACK_CLIENT_SECRET (.env or CI secrets). '
                 'See docs/slack_setup.md',
                 style: Theme.of(context).textTheme.bodySmall?.copyWith(
                       color: AppColors.warning,

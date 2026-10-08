@@ -29,6 +29,8 @@ migrate_working_dir/
 .env.*.local
 snapcraft-creds.txt
 *-creds.txt
+# Written by GitHub Actions for snap builds; never commit.
+snap/local/ci_dart_defines.env
 
 # Flutter/Dart/Pub related
 **/doc/api/

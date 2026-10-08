@@ -1,12 +1,15 @@
-# Optional CI: build + publish on main / v*.*.* tags.
-# For a simple local release, see comments at the top of snap/snapcraft.yaml.
+# Build + publish on main / v*.*.* tags.
 #
-# GitHub secret SNAPCRAFT_STORE_CREDENTIALS — export once:
-#   snapcraft export-login --snaps=gizecare \
-#     --channels=edge,candidate,stable \
-#     --acls=package_upload,package_release \
-#     snapcraft-creds.txt
-# Then: Settings → Secrets → Actions → SNAPCRAFT_STORE_CREDENTIALS
+# Store login (use Actions *Variables* — Secrets were not visible to this job
+# reliably for multiline export-login output):
+#   SNAPCRAFT_STORE_CREDENTIALS  → Settings → Secrets and variables → Actions → Variables
+#
+# App credentials (Variables or Secrets; baked into the snap via --dart-define):
+#   GOOGLE_CALENDAR_CLIENT_ID / GOOGLE_CALENDAR_CLIENT_SECRET
+#   SLACK_CLIENT_ID / SLACK_CLIENT_SECRET
+#   TELEGRAM_API_ID / TELEGRAM_API_HASH
+#
+# See docs/snap_setup.md
 
 name: Snapcraft
 
@@ -21,9 +24,16 @@ permissions:
 jobs:
   build-and-release:
     runs-on: ubuntu-latest
-    # secrets cannot be used in `if:` — map to env first, then check env.
+    # Prefer vars.* for store creds (repo convention). Fall back to secrets.*.
+    # Map to env first — secrets/vars cannot be used directly in `if:`.
     env:
-      SNAPCRAFT_STORE_CREDENTIALS: ${{ secrets.SNAPCRAFT_STORE_CREDENTIALS }}
+      SNAPCRAFT_STORE_CREDENTIALS: ${{ vars.SNAPCRAFT_STORE_CREDENTIALS || secrets.SNAPCRAFT_STORE_CREDENTIALS }}
+      GOOGLE_CALENDAR_CLIENT_ID: ${{ vars.GOOGLE_CALENDAR_CLIENT_ID || secrets.GOOGLE_CALENDAR_CLIENT_ID }}
+      GOOGLE_CALENDAR_CLIENT_SECRET: ${{ vars.GOOGLE_CALENDAR_CLIENT_SECRET || secrets.GOOGLE_CALENDAR_CLIENT_SECRET }}
+      SLACK_CLIENT_ID: ${{ vars.SLACK_CLIENT_ID || secrets.SLACK_CLIENT_ID }}
+      SLACK_CLIENT_SECRET: ${{ vars.SLACK_CLIENT_SECRET || secrets.SLACK_CLIENT_SECRET }}
+      TELEGRAM_API_ID: ${{ vars.TELEGRAM_API_ID || secrets.TELEGRAM_API_ID }}
+      TELEGRAM_API_HASH: ${{ vars.TELEGRAM_API_HASH || secrets.TELEGRAM_API_HASH }}
     steps:
       - uses: actions/checkout@v4
 
@@ -37,10 +47,33 @@ jobs:
       - name: Install Snapcraft
         run: sudo snap install snapcraft --classic
 
+      - name: Write dart-defines for Flutter (from Actions vars/secrets)
+        run: |
+          mkdir -p snap/local
+          : > snap/local/ci_dart_defines.env
+          add_define() {
+            local key="$1"
+            local val="$2"
+            if [ -n "$val" ]; then
+              printf '%s=%s\n' "$key" "$val" >> snap/local/ci_dart_defines.env
+            fi
+          }
+          add_define GOOGLE_CALENDAR_CLIENT_ID "${GOOGLE_CALENDAR_CLIENT_ID}"
+          add_define GOOGLE_CALENDAR_CLIENT_SECRET "${GOOGLE_CALENDAR_CLIENT_SECRET}"
+          add_define SLACK_CLIENT_ID "${SLACK_CLIENT_ID}"
+          add_define SLACK_CLIENT_SECRET "${SLACK_CLIENT_SECRET}"
+          add_define TELEGRAM_API_ID "${TELEGRAM_API_ID}"
+          add_define TELEGRAM_API_HASH "${TELEGRAM_API_HASH}"
+          echo "Wrote $(grep -c '=' snap/local/ci_dart_defines.env || true) dart-define entries (values redacted)."
+
       - name: Build snap
         run: |
           sudo --user "$USER" --preserve-env --preserve-env=PATH -- env -- \
             snapcraft pack --use-lxd
+
+      - name: Scrub CI dart-defines from workspace
+        if: always()
+        run: rm -f snap/local/ci_dart_defines.env
 
       - name: Locate snap
         id: snap
@@ -52,10 +85,12 @@ jobs:
           name: gizecare-snap
           path: ${{ steps.snap.outputs.snap }}
 
-      # Needs repo secret SNAPCRAFT_STORE_CREDENTIALS (see header comments).
       - name: Publish to Snap Store
         if: env.SNAPCRAFT_STORE_CREDENTIALS != ''
         uses: snapcore/action-publish@v1
+        env:
+          # Re-assert on the step (Variables, with Secrets fallback).
+          SNAPCRAFT_STORE_CREDENTIALS: ${{ vars.SNAPCRAFT_STORE_CREDENTIALS || secrets.SNAPCRAFT_STORE_CREDENTIALS }}
         with:
           snap: ${{ steps.snap.outputs.snap }}
           release: ${{ startsWith(github.ref, 'refs/tags/v') && 'candidate' || 'edge' }}

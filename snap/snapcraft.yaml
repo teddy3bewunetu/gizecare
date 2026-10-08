@@ -107,7 +107,31 @@ parts:
       export PATH="$CRAFT_STAGE/usr/bin:$PATH"
       flutter config --no-analytics --enable-linux-desktop
       flutter pub get
-      flutter build linux --release --target=lib/main.dart
+      # Optional CI inject: snap/local/ci_dart_defines.env (gitignored).
+      # GitHub Actions writes app OAuth / Telegram API keys there so the
+      # store snap works for end users without a ~/snap/.../.env file.
+      DART_DEFINES=()
+      DEFINES_FILE="$CRAFT_PART_SRC/snap/local/ci_dart_defines.env"
+      if [ -f "$DEFINES_FILE" ]; then
+        while IFS= read -r line || [ -n "$line" ]; do
+          case "$line" in
+            ''|\#*) continue ;;
+            *=*)
+              key="${line%%=*}"
+              val="${line#*=}"
+              # Trim CR and surrounding quotes from secret values.
+              val="${val%$'\r'}"
+              val="${val#\"}"
+              val="${val%\"}"
+              val="${val#\'}"
+              val="${val%\'}"
+              DART_DEFINES+=(--dart-define="${key}=${val}")
+              ;;
+          esac
+        done < "$DEFINES_FILE"
+      fi
+      flutter build linux --release --target=lib/main.dart \
+        ${DART_DEFINES[@]+"${DART_DEFINES[@]}"}
       cp -a build/linux/*/release/bundle/. "$CRAFT_PART_INSTALL/"
       install -D -m 755 snap/local/gizecare-launch \
         "$CRAFT_PART_INSTALL/bin/gizecare-launch"

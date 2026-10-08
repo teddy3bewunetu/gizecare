@@ -1,63 +1,18 @@
-# GizeCare Snap — API keys, Telegram, browser
+# GizeCare Snap — store installs, CI config, browser
 
-After installing from the Snap Store (`sudo snap install gizecare --edge`), the app
-does **not** read the project-root `.env` used for local `flutter run`. Put secrets
-where the snap can see them.
+## End users (Snap Store)
 
-## 1. Config file for Google / Slack / Telegram
-
-Create:
+Install and sign in — **no `.env` file**:
 
 ```bash
-mkdir -p ~/snap/gizecare/common
-nano ~/snap/gizecare/common/.env
+sudo snap install gizecare --edge   # or stable when published
+gizecare
 ```
 
-Paste (same keys as `.env.example`):
+Then use **Connect** / sign-in in Gmail, Slack, and Telegram. App OAuth client
+IDs and Telegram `api_id` / `api_hash` are baked into release builds by CI.
 
-```env
-GOOGLE_CALENDAR_CLIENT_ID=....apps.googleusercontent.com
-GOOGLE_CALENDAR_CLIENT_SECRET=...
-
-TELEGRAM_API_ID=...
-TELEGRAM_API_HASH=...
-
-SLACK_CLIENT_ID=...
-SLACK_CLIENT_SECRET=...
-```
-
-Also accepted:
-
-- `~/snap/gizecare/common/.env` (preferred — survives refreshes)
-- `~/.config/gizecare/.env`
-
-Then fully quit GizeCare and start it again.
-
-Setup guides:
-
-- Google / Gmail: `docs/gmail_setup.md`, `docs/google_calendar_setup.md`
-- Slack: `docs/slack_setup.md`
-- Telegram: `docs/telegram_setup.md`
-
-## 2. Telegram TDLib (`libtdjson.so`)
-
-The snap does not ship TDLib yet. Build or install `libtdjson.so`, then either:
-
-```bash
-cp /path/to/libtdjson.so ~/snap/gizecare/common/libtdjson.so
-```
-
-or set in `.env`:
-
-```env
-TELEGRAM_TDLIB_PATH="/home/YOU/.local/lib/libtdjson.so"
-```
-
-(Use a path under your real home; quote paths with spaces.)
-
-## 3. Optional interface connects
-
-Some plugs are not auto-connected:
+Optional plugs (if a feature asks):
 
 ```bash
 sudo snap connect gizecare:password-manager-service
@@ -65,18 +20,78 @@ sudo snap connect gizecare:process-control
 sudo snap connect gizecare:audio-record
 ```
 
-`shared-memory` should be private and connected automatically after a rebuild that
-declares `plugs.shared-memory.private: true`.
+### Browser
 
-## 4. Browser (Gemini / ChatGPT / etc.)
+If an embedded page shows `GDBus… portal… NotAllowed`, update to a build that
+sets `GTK_USE_PORTAL=0` and private `shared-memory`, then restart.
 
-Needs network + WebKit inside the sandbox. If you still see
-`GDBus.Error:org.freedesktop.portal.Error.NotAllowed`, refresh to a build that sets
-`GTK_USE_PORTAL=0` and private shared-memory, then restart the app.
-
-## 5. In-app Terminal
+### In-app Terminal
 
 Under **strict** confinement many host commands (`whoami`, `man`, `df`, …) return
-**Permission denied**. Core `/bin` tools still work. Prefer **Open system terminal**
-for a full host shell, or run GizeCare from source with `flutter run` for an
-unrestricted PTY.
+**Permission denied**. Prefer **Open system terminal** for a full host shell.
+
+### Telegram TDLib
+
+Release snaps should ship or locate `libtdjson.so`. If Connect fails with
+“Could not load libtdjson”, that build is missing the library — report to the
+publisher (not something users configure).
+
+---
+
+## Maintainers — GitHub Actions config
+
+**Settings → Secrets and variables → Actions**
+
+### Variables (required for publish in this repo)
+
+| Name | Where | Purpose |
+|------|--------|---------|
+| `SNAPCRAFT_STORE_CREDENTIALS` | **Variables** | Snap Store login (`snapcraft export-login` file contents) |
+
+Use **Variables** for store credentials here (Secrets did not resolve reliably for
+the multiline login blob in this workflow).
+
+### Variables or Secrets (app credentials → dart-define)
+
+Add each as a **Variable** or a **Secret** (workflow accepts either; Variables
+first, then Secrets):
+
+| Name |
+|------|
+| `GOOGLE_CALENDAR_CLIENT_ID` |
+| `GOOGLE_CALENDAR_CLIENT_SECRET` |
+| `SLACK_CLIENT_ID` |
+| `SLACK_CLIENT_SECRET` |
+| `TELEGRAM_API_ID` |
+| `TELEGRAM_API_HASH` |
+
+Copy values from your local `.env`. On push to `main` / tags `v*.*.*`, CI writes
+them to `snap/local/ci_dart_defines.env` (gitignored), Snapcraft passes
+`--dart-define=…`, then deletes the file.
+
+Create the store credential once:
+
+```bash
+snapcraft export-login \
+  --snaps=gizecare \
+  --channels=edge,candidate,stable \
+  --acls=package_upload,package_release \
+  snapcraft-creds.txt
+```
+
+Paste the **entire file** into the Actions variable `SNAPCRAFT_STORE_CREDENTIALS`,
+then delete the local file (do not commit it).
+
+## Developers — local `flutter run`
+
+Use project-root `.env` (from `.env.example`). That path is for development
+only; store users never see it.
+
+Override for a local snap test without CI:
+
+```bash
+cp .env snap/local/ci_dart_defines.env   # gitignored
+# keep only KEY=value lines the build understands
+snapcraft pack --use-lxd
+rm -f snap/local/ci_dart_defines.env
+```
