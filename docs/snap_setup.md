@@ -23,7 +23,9 @@ sudo snap connect gizecare:audio-record
 ### Browser
 
 If an embedded page shows `GDBus… portal… NotAllowed`, update to a build that
-sets `GTK_USE_PORTAL=0` and private `shared-memory`, then restart.
+sets `GTK_USE_PORTAL=0` / `GIO_USE_PORTALS=0`, disables nested WebKit sandbox,
+uses private `shared-memory`, and plugs `network-status` (auto-connected), then
+fully quit and restart GizeCare.
 
 ### In-app Terminal
 
@@ -32,9 +34,11 @@ Under **strict** confinement many host commands (`whoami`, `man`, `df`, …) ret
 
 ### Telegram TDLib
 
-Release snaps should ship or locate `libtdjson.so`. If Connect fails with
-“Could not load libtdjson”, that build is missing the library — report to the
-publisher (not something users configure).
+Store builds compile `libtdjson.so` inside the snap (`tdlib` part on core22) and
+set `TELEGRAM_TDLIB_PATH=$SNAP/lib/libtdjson.so`. Users do not install TDLib.
+
+Do **not** copy a host Ubuntu 24.04 `libtdjson.so` into `~/snap/gizecare/common/`
+— it needs newer glibc (`GLIBC_2.38`) and will fail inside the snap.
 
 ---
 

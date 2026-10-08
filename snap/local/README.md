@@ -216,8 +216,8 @@ Paste the file into the **Variables** entry `SNAPCRAFT_STORE_CREDENTIALS`, then 
 | Build fails on WebKit / GTK | Clean and retry: `snapcraft clean && snapcraft pack --use-lxd`. |
 | App cannot access network / files | Strict snaps use plugs listed in `snapcraft.yaml`. After store review, some interfaces may need manual connection once. |
 | Gmail / Slack / Telegram “not configured” after Snap install | Release builds need GitHub Actions secrets baked as dart-defines — see `docs/snap_setup.md`. |
-| Browser shows `portal.Error.NotAllowed` | Needs `GTK_USE_PORTAL=0` + private `shared-memory` (in packaging). Refresh snap and restart. |
-| Telegram cannot load libtdjson | Copy `libtdjson.so` to `~/snap/gizecare/common/` or set `TELEGRAM_TDLIB_PATH`. |
+| Browser shows `portal.Error.NotAllowed` | Needs `GTK_USE_PORTAL=0` / `GIO_USE_PORTALS=0`, `WEBKIT_DISABLE_SANDBOX_THIS_IS_DANGEROUS=1`, private `shared-memory`, and `network-status` plug (WebKit proxy portal). Refresh snap, quit all instances, restart. |
+| Telegram cannot load libtdjson | Snap must include the `tdlib` part (jammy-built `.so`). Host 24.04 `.so` fails with `GLIBC_2.38`. Rebuild/republish; do not copy host TDLib into `~/snap/.../common`. |
 | In-app terminal: Permission denied | Expected under strict confinement; use system terminal or `/bin` tools only. |
 | App exits immediately / `libblas.so.3: cannot open shared object file` | Debian stages BLAS/LAPACK under `blas/` and `lapack/` without alternatives soname links. `snapcraft.yaml` recreates `libblas.so.3` / `liblapack.so.3` in `override-prime`. Rebuild and republish if you changed staging. |
 | App exits with `libEGL fatal: did not find extension DRI_Mesa version 1` | Staged Mesa/GL from `libmpv` conflicts with the gnome platform. `override-prime` strips those libs so graphics come from gnome-platform + `opengl`. |
