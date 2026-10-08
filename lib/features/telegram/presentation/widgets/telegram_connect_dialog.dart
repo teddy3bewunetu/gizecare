@@ -59,7 +59,9 @@ class _TelegramConnectDialogState
     if (!TelegramConfig.hasCredentials) {
       setState(() {
         _error =
-            'Set TELEGRAM_API_ID and TELEGRAM_API_HASH in .env (see docs/telegram_setup.md)';
+            'Telegram is not configured in this build. '
+            'Developers: set TELEGRAM_API_ID / TELEGRAM_API_HASH (.env or CI secrets). '
+            'See docs/telegram_setup.md / docs/snap_setup.md';
       });
       return;
     }
