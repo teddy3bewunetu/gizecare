@@ -919,10 +919,23 @@ class TdjsonClient {
   void _loadLibrary() {
     if (_lib != null) return;
 
+    final env = Platform.environment;
+    final snap = env['SNAP'] ?? '';
+    final snapCommon = env['SNAP_USER_COMMON'] ?? '';
+    final snapData = env['SNAP_USER_DATA'] ?? '';
+    final realHome = env['SNAP_REAL_HOME'] ?? '';
+
     final candidates = <String>[
       if (TelegramConfig.tdlibPath.isNotEmpty) TelegramConfig.tdlibPath,
       'libtdjson.so',
       'libtdjson.so.1.8.0',
+      // Snap: drop the .so into common, or ship under $SNAP/lib.
+      if (snapCommon.isNotEmpty) p.join(snapCommon, 'libtdjson.so'),
+      if (snapData.isNotEmpty) p.join(snapData, 'libtdjson.so'),
+      if (snap.isNotEmpty) p.join(snap, 'lib', 'libtdjson.so'),
+      if (snap.isNotEmpty) p.join(snap, 'usr', 'lib', 'libtdjson.so'),
+      if (realHome.isNotEmpty)
+        p.join(realHome, '.local', 'lib', 'libtdjson.so'),
       '/usr/local/lib/libtdjson.so',
       '/usr/lib/libtdjson.so',
       '/usr/lib/x86_64-linux-gnu/libtdjson.so',

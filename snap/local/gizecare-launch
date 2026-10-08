@@ -10,5 +10,7 @@ plat_lib32="$SNAP/gnome-platform/lib/x86_64-linux-gnu"
 export LIBGL_DRIVERS_PATH="${plat_lib}/dri"
 export __EGL_VENDOR_LIBRARY_DIRS="$SNAP/gnome-platform/usr/share/glvnd/egl_vendor.d"
 export LD_LIBRARY_PATH="${plat_lib}:${plat_lib32}${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+# Avoid xdg-desktop-portal calls that return NotAllowed for WebKit in strict snaps.
+export GTK_USE_PORTAL=0
 
 exec "$SNAP/gizecare" "$@"

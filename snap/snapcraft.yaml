@@ -37,11 +37,21 @@ slots:
     bus: session
     name: com.gizecare.gizecare
 
+# Private /dev/shm for WebKit (browser-support). Without this, Snap often
+# leaves shared-memory unconnected and embedded WebKit fails with portal errors.
+plugs:
+  shared-memory:
+    private: true
+
 apps:
   gizecare:
     # Wrapper forces gnome-platform Mesa after desktop-launch (see bin/gizecare-launch).
     command: bin/gizecare-launch
     extensions: [gnome]
+    environment:
+      # Gnome extension sets GTK_USE_PORTAL=1; WebKit then hits
+      # org.freedesktop.portal.Error.NotAllowed inside the sandbox.
+      GTK_USE_PORTAL: '0'
     plugs:
       - network
       - network-bind

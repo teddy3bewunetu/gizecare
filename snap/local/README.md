@@ -208,6 +208,10 @@ You do **not** need CI to publish; local `snapcraft upload` is enough.
 | `flutter_quill` / `pdfrx` compile errors in Snapcraft | Snap was using a newer Flutter than this repo. Build pins **Flutter 3.38.3** (see `flutter-sdk` part). After changing the pin: `snapcraft clean && snapcraft pack --use-lxd`. |
 | Build fails on WebKit / GTK | Clean and retry: `snapcraft clean && snapcraft pack --use-lxd`. |
 | App cannot access network / files | Strict snaps use plugs listed in `snapcraft.yaml`. After store review, some interfaces may need manual connection once. |
+| Gmail / Slack / Telegram “missing credentials” after Snap install | Project `.env` is not used. Put keys in `~/snap/gizecare/common/.env` — see `docs/snap_setup.md`. |
+| Browser shows `portal.Error.NotAllowed` | Needs `GTK_USE_PORTAL=0` + private `shared-memory` (in packaging). Refresh snap and restart. |
+| Telegram cannot load libtdjson | Copy `libtdjson.so` to `~/snap/gizecare/common/` or set `TELEGRAM_TDLIB_PATH`. |
+| In-app terminal: Permission denied | Expected under strict confinement; use system terminal or `/bin` tools only. |
 | App exits immediately / `libblas.so.3: cannot open shared object file` | Debian stages BLAS/LAPACK under `blas/` and `lapack/` without alternatives soname links. `snapcraft.yaml` recreates `libblas.so.3` / `liblapack.so.3` in `override-prime`. Rebuild and republish if you changed staging. |
 | App exits with `libEGL fatal: did not find extension DRI_Mesa version 1` | Staged Mesa/GL from `libmpv` conflicts with the gnome platform. `override-prime` strips those libs so graphics come from gnome-platform + `opengl`. |
 | `Failed to create OpenGL context` / `glGetString(GL_VERSION) failed` | Host Mesa (Ubuntu 24.04+) can disagree with core22/gnome-42. `bin/gizecare-launch` prepends gnome-platform Mesa/DRI after the desktop launcher. |

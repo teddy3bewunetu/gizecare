@@ -90,7 +90,7 @@ class GmailPage extends ConsumerWidget {
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 20),
               child: Text(
-                'Add GOOGLE_CALENDAR_CLIENT_ID / SECRET to .env and enable Gmail API. See docs/gmail_setup.md',
+                'Add GOOGLE_CALENDAR_CLIENT_ID / SECRET to .env (or ~/snap/gizecare/common/.env for Snap). Enable Gmail API — docs/gmail_setup.md / docs/snap_setup.md',
                 style: Theme.of(context).textTheme.bodySmall?.copyWith(
                       color: AppColors.warning,
                     ),

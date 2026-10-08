@@ -87,6 +87,9 @@ class _TerminalPageState extends State<TerminalPage> {
             'LANG': Platform.environment['LANG']!,
           if (Platform.environment['LC_ALL'] != null)
             'LC_ALL': Platform.environment['LC_ALL']!,
+          // Strict snaps block many host /usr/bin tools; prefer core /bin.
+          if ((Platform.environment['SNAP'] ?? '').isNotEmpty)
+            'PATH': _snapTerminalPath,
         },
       );
 
@@ -288,9 +291,30 @@ String get _shellExecutable {
     return 'powershell.exe';
   }
   if (Platform.isMacOS || Platform.isLinux || Platform.isAndroid) {
+    // Inside a Snap, host $SHELL may point at blocked host paths; use core bash.
+    if ((Platform.environment['SNAP'] ?? '').isNotEmpty) {
+      for (final candidate in const ['/bin/bash', '/bin/sh']) {
+        if (File(candidate).existsSync()) return candidate;
+      }
+    }
     return Platform.environment['SHELL'] ?? 'bash';
   }
   return 'sh';
+}
+
+/// PATH for in-app PTY under Snap (coreutils in /bin work; many /usr/bin host
+/// tools return Permission denied).
+String get _snapTerminalPath {
+  final snap = Platform.environment['SNAP'] ?? '';
+  final parts = <String>[
+    if (snap.isNotEmpty) '$snap/usr/bin',
+    if (snap.isNotEmpty) '$snap/bin',
+    '/bin',
+    '/usr/bin',
+    '/sbin',
+    '/usr/sbin',
+  ];
+  return parts.join(':');
 }
 
 List<String> get _shellArguments {
