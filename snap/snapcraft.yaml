@@ -140,10 +140,9 @@ parts:
             "$libdir"/libgbm.so*
       rm -rf "$libdir/dri" "$CRAFT_PRIME/usr/share/glvnd"
       # Size: Mesa also stages LLVM (~110MB) for lavapipe; nothing else in
-      # the snap links it after dri/EGL are removed. FFmpeg pulls flite TTS
-      # voice banks (~25MB) that media_kit never needs.
+      # the snap links it after dri/EGL are removed. Keep libflite*:
+      # libavfilter (via libmpv) has hard DT_NEEDED on the voice banks.
       rm -f "$libdir"/libLLVM*
-      rm -f "$libdir"/libflite*
       rm -rf "$CRAFT_PRIME/usr/lib/aspell" \
              "$CRAFT_PRIME/usr/share/icons" \
              "$CRAFT_PRIME/usr/share/locale" \

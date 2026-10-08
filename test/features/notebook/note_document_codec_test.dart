@@ -11,7 +11,7 @@ void main() {
 
     final decoded = NoteDocumentCodec.decode(encoded);
     expect(decoded.toPlainText(), isNotEmpty);
-    expect(jsonDecode(encoded), isA<Map>());
+    expect(jsonDecode(encoded), isA<Map<String, dynamic>>());
   });
 
   test('legacy plain text becomes paragraphs', () {
