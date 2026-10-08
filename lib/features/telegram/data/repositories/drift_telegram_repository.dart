@@ -1356,8 +1356,8 @@ class DriftTelegramRepository implements TelegramRepository {
     if (type == 'messages') {
       final chatId = update['chat_id'];
       final list = (update['messages'] as List<dynamic>? ?? const [])
-          .whereType<Map>()
-          .map((e) => Map<String, dynamic>.from(e))
+          .whereType<Map<String, dynamic>>()
+          .map(Map<String, dynamic>.from)
           .toList();
       // If syncMessages() is waiting, let that path upsert once (avoids races).
       final hadPending =
@@ -2165,8 +2165,8 @@ class DriftTelegramRepository implements TelegramRepository {
     if (type == 'messagePhoto') {
       final photo = content['photo'] as Map<String, dynamic>?;
       final sizes = (photo?['sizes'] as List<dynamic>? ?? const [])
-          .whereType<Map>()
-          .map((e) => Map<String, dynamic>.from(e))
+          .whereType<Map<String, dynamic>>()
+          .map(Map<String, dynamic>.from)
           .toList();
       Map<String, dynamic>? best;
       var bestArea = -1;

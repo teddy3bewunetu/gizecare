@@ -750,8 +750,8 @@ class DriftSlackRepository implements SlackRepository {
       final r = jsonDecode(raw.isEmpty ? '[]' : raw);
       if (r is List) {
         reactions = r
-            .whereType<Map>()
-            .map((e) => SlackReaction.fromJson(Map<String, dynamic>.from(e)))
+            .whereType<Map<String, dynamic>>()
+            .map(SlackReaction.fromJson)
             .toList();
       }
     } catch (_) {}
@@ -760,8 +760,8 @@ class DriftSlackRepository implements SlackRepository {
       final f = jsonDecode(raw.isEmpty ? '[]' : raw);
       if (f is List) {
         files = f
-            .whereType<Map>()
-            .map((e) => SlackFileRef.fromJson(Map<String, dynamic>.from(e)))
+            .whereType<Map<String, dynamic>>()
+            .map(SlackFileRef.fromJson)
             .toList();
       }
     } catch (_) {}

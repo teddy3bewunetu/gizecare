@@ -858,9 +858,9 @@ class TdjsonClient {
     if (type == 'messagePhoto') {
       final photo = content['photo'] as Map<String, dynamic>?;
       final sizes = (photo?['sizes'] as List<dynamic>? ?? const [])
-          .whereType<Map>();
+          .whereType<Map<String, dynamic>>();
       for (final s in sizes) {
-        addFile(Map<String, dynamic>.from(s)['photo'] as Map<String, dynamic>?);
+        addFile(s['photo'] as Map<String, dynamic>?);
       }
     } else if (type == 'messageDocument') {
       final doc = content['document'] as Map<String, dynamic>?;

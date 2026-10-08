@@ -1,5 +1,3 @@
-import 'dart:async';
-
 import 'package:gizecare/core/services/app_logger.dart';
 
 /// System tray integration.
@@ -13,7 +11,6 @@ class TrayService {
 
   final AppLogger _logger;
   bool _ready = false;
-  bool _disposed = false;
   bool _trackingActive = false;
 
   Future<void> Function()? onOpenCompact;
@@ -55,7 +52,6 @@ class TrayService {
   }
 
   void dispose() {
-    _disposed = true;
     _ready = false;
   }
 }

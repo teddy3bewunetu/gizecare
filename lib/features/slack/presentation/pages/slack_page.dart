@@ -1020,7 +1020,7 @@ class _MessageBubble extends ConsumerWidget {
       AppSnackBar.show(context, result.requireFailure.message);
       final url = file.urlPrivate;
       if (url != null) {
-        await AppLinkOpener.open(context, url, title: file.name ?? 'File');
+        await AppLinkOpener.open(context, url, title: file.name);
       }
       return;
     }

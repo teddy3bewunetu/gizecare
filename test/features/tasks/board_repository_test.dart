@@ -1,6 +1,5 @@
 import 'dart:io';
 
-import 'package:drift/drift.dart';
 import 'package:drift/native.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -153,7 +152,8 @@ void main() {
     expect(snap.columns, hasLength(3));
   });
 
-  test('idempotent v5 migration recovers when user_version stuck at 4', () async {
+  test('idempotent board migration recovers when user_version stuck at 4',
+      () async {
     final dir = await Directory.systemTemp.createTemp('gizecare_mig_');
     final file = File('${dir.path}/test.sqlite');
 
@@ -179,7 +179,7 @@ void main() {
     await first.close();
 
     final second = AppDatabase(NativeDatabase(file));
-    // Opening triggers onUpgrade(4→5) which must not throw.
+    // Opening triggers onUpgrade(4→current) which must not throw.
     final board2 = DriftBoardRepository(second);
     final snap = (await board2.getBoard(project.id)).requireValue;
     expect(snap.columns, hasLength(3));
@@ -187,7 +187,7 @@ void main() {
 
     final versionRows =
         await second.customSelect('PRAGMA user_version').get();
-    expect(versionRows.first.data.values.first, 5);
+    expect(versionRows.first.data.values.first, second.schemaVersion);
     await second.close();
     await dir.delete(recursive: true);
   });
